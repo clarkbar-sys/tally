@@ -1,0 +1,57 @@
+# gitleaks config for tally.
+#
+# This repo handles a SimpleFIN access URL — a bearer credential that grants
+# read access to financial accounts (see docs/security/secrets.md). The rules
+# below target that shape and Plaid tokens specifically, on top of gitleaks'
+# defaults. This config is consumed by the pre-push gate and CI wired in #5.
+#
+# Run locally:  gitleaks detect --config .gitleaks.toml --redact
+
+title = "tally"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "simplefin-access-url"
+description = "SimpleFIN access URL (bearer credential: basic-auth creds embedded in a *.simplefin.org URL)"
+regex = '''https?://[^\s:@/]+:[^\s@/]+@[a-zA-Z0-9.-]*simplefin\.org[^\s'"]*'''
+keywords = ["simplefin"]
+
+[[rules]]
+id = "url-embedded-basic-auth"
+description = "Credentials embedded in any URL (scheme://user:pass@host) — the exact shape a SimpleFIN access URL takes"
+regex = '''[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s:@/]+:[^\s@/]+@[a-zA-Z0-9.\-]+'''
+
+[[rules]]
+id = "simplefin-setup-token"
+description = "SimpleFIN setup token (base64 of a claim URL on the SimpleFIN bridge)"
+# Long base64 blob that decodes to a bridge claim URL. Matched heuristically as
+# a long base64 run; the keyword narrows it to intentional token material.
+regex = '''(?i)(setup[_-]?token|simplefin[_-]?token)['"]?\s*[:=]\s*['"]?[A-Za-z0-9+/]{60,}={0,2}'''
+keywords = ["setup_token", "setuptoken", "simplefin"]
+
+[[rules]]
+id = "plaid-access-token"
+description = "Plaid access token (access-<env>-<uuid>)"
+regex = '''access-(sandbox|development|production)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'''
+keywords = ["access-sandbox", "access-development", "access-production"]
+
+[[rules]]
+id = "plaid-client-secret"
+description = "Plaid client secret / client_id assignment"
+regex = '''(?i)plaid[_-]?(secret|client[_-]?id)['"]?\s*[:=]\s*['"]?[a-f0-9]{24,32}'''
+keywords = ["plaid"]
+
+[allowlist]
+description = "Placeholders in docs and synthetic fixtures are intentional, never real credentials (fixture policy: docs/security/secrets.md)"
+regexTarget = "match"
+regexes = [
+  # Angle-bracket and SHOUTING placeholders used throughout the docs.
+  '''<[a-zA-Z0-9_-]+>''',
+  '''\b(EXAMPLE|PLACEHOLDER|REDACTED|FAKE|DUMMY|CHANGEME|xxxx+)\b''',
+  # All-zeros UUID — an unmistakably synthetic id used in token examples.
+  '''0{8}-0{4}-0{4}-0{4}-0{12}''',
+  # Loopback / obviously-non-secret hosts in illustrative URLs.
+  '''://[^/@\s]+@(localhost|127\.0\.0\.1|example\.(com|org))''',
+]
