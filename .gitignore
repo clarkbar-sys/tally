@@ -1,0 +1,45 @@
+# --- Secrets & credentials -------------------------------------------------
+# Never commit a real credential. The SimpleFIN access URL is a bearer token
+# (see docs/security/secrets.md). These patterns are a backstop, not the
+# primary control — that's systemd credentials + the gitleaks gate.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+*.credential
+
+# --- Datastore (financial data — never commit) -----------------------------
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+
+# --- Data dumps & exports (financial data — never commit) ------------------
+/dumps/
+/exports/
+*.dump
+*.sql.gz
+*.sql.bz2
+*.bak
+# NOTE: *.sql itself is NOT ignored — embedded migrations are committed .sql.
+
+# --- Go build artifacts ----------------------------------------------------
+/tally
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+
+# --- Editor / OS -----------------------------------------------------------
+.DS_Store
+*.swp
+.idea/
+.vscode/
