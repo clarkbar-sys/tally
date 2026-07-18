@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# tally pre-push gate. Committed to the repo so it survives a fresh clone.
+# Enable once per clone:  make hooks   (git config core.hooksPath .githooks)
+#
+# Blocks the push if any check fails. Mirrors CI (.github/workflows/ci.yml).
+set -euo pipefail
+
+echo "▶ gofmt"
+unformatted="$(gofmt -l .)"
+if [ -n "$unformatted" ]; then
+	echo "✗ gofmt: these files need formatting (run: make fmt):" >&2
+	echo "$unformatted" >&2
+	exit 1
+fi
+
+echo "▶ go vet"
+go vet ./...
+
+echo "▶ go test"
+go test ./...
+
+echo "▶ gitleaks"
+if ! command -v gitleaks >/dev/null 2>&1; then
+	echo "✗ gitleaks is not installed — this gate is NOT optional for this repo (#6)." >&2
+	echo "  tally handles a bearer credential; secrets must never leave your machine." >&2
+	echo "  install: go install github.com/zricethezav/gitleaks/v8@latest" >&2
+	exit 1
+fi
+gitleaks detect --config .gitleaks.toml --redact --no-banner
+
+echo "✓ pre-push gate passed"
