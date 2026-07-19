@@ -101,6 +101,64 @@
     --beam-opacity: 1;              /* slow CRT beam sweep (0 = no beam) */
   }
 
+  /* ---- Slate — calm dark ------------------------------------------------
+     A neutral, flat dark theme in the modern app register (Linear/GitHub
+     dark): cool slate greys, one restrained blue accent, and the whole FX
+     budget switched off so nothing glows or scans. Fills the same contract
+     as Amber CRT — no component rules change. */
+  [data-theme="slate"]{
+    color-scheme: dark;
+
+    /* Surfaces — page, raised panel, deepest inset */
+    --bg: #0d1117;
+    --bg-raised: #161b22;
+    --bg-raised-2: #1c2230;
+
+    /* Ink — primary, dimmed, faint text */
+    --ink: #e6edf3;
+    --ink-dim: #9aa7b4;
+    --ink-faint: #6e7b8a;
+
+    /* Lines — hairline, stronger divider */
+    --line: #232a35;
+    --line-strong: #30363d;
+
+    /* Accent — one restrained blue */
+    --accent: #4c8dff;
+    --accent-strong: #79a9ff;
+    --accent-ink: #0b1220;        /* dark text on the filled accent (AA on #4c8dff) */
+    --accent-tint: #121a2b;       /* faint accent wash behind surfaces */
+    --accent-glow: rgba(76,141,255,.16);
+    --accent-glow-hot: rgba(121,169,255,.4);
+
+    /* Status */
+    --good: #4fc586;
+    --danger: #ff6f5e;
+    --warn: #e6a24b;
+
+    /* Label hues — tag chips */
+    --lab-red: #ff6f5e;
+    --lab-amber: #f0a838;
+    --lab-green: #4fc586;
+    --lab-blue: #97a6ff;
+    --lab-pink: #e08adf;
+    --lab-cyan: #5ad6d0;
+
+    /* Type — display (serif) + body (mono) stacks */
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --font-body: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+
+    /* FX budget — off: flat, no glow/grain/scanlines/beam */
+    --phosphor: none;
+    --flash: #ff7a3d;
+    --flash-glow: rgba(255,122,61,.4);
+    --danger-glow: rgba(255,111,94,.4);
+    --grid: transparent;
+    --grain-opacity: 0;
+    --scan-opacity: 0;
+    --beam-opacity: 0;
+  }
+
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body{ margin: 0; padding: 0; }
   body{
