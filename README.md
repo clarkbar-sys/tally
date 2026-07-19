@@ -22,6 +22,13 @@ make hooks   # enable the pre-push gate (once per clone)
 make ci      # gofmt, vet, build, test, gitleaks
 ```
 
+Run the app locally — data stays in your browser via IndexedDB, nothing is
+served but static files:
+
+```sh
+go run ./cmd/tally -local   # http://127.0.0.1:8080
+```
+
 See [CONTRIBUTING.md](CONTRIBUTING.md). Security posture: [`docs/security/`](docs/security/).
 
 ## License

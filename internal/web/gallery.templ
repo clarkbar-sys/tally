@@ -2,12 +2,12 @@
 
 package web
 
-// Page is tally's hello-world shell: the Amber CRT terminal theme plus a
-// gallery of the styled widgets (buttons, checkboxes, radios, toggles, fields,
-// chips, labels, cards, tally-marks), framed with a Bloomberg-style command
-// line and status ticker. No data layer yet — this is the design sandbox while
-// the model is still in flux. The running version shows top-right.
-templ Page() {
+// GalleryPage is tally's living style reference: the Amber CRT terminal theme
+// plus a gallery of the styled widgets (buttons, checkboxes, radios, toggles,
+// fields, chips, labels, cards, tally-marks). The real app ([AppPage]) reuses
+// these components; this page is served at /design so the palette stays visible
+// while the app is built. The running version shows top-right.
+templ GalleryPage() {
 	<!doctype html>
 	<html lang="en">
 		<head>
@@ -17,6 +17,7 @@ templ Page() {
 			<meta name="theme-color" content="#100F0D"/>
 			<title>tally — design</title>
 			<meta name="description" content="tally — Amber CRT terminal theme + widget gallery."/>
+			<link rel="icon" type="image/svg+xml" href="static/favicon.svg"/>
 			<link rel="stylesheet" href="static/app.css"/>
 		</head>
 		<body>
