@@ -51,15 +51,13 @@ stale, so commit the regenerated output alongside the template change.
 
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publishes the
 tally UI as the site. The Go app renders itself to a static site
-(`go run ./cmd/tally -export`), which becomes `index.html` + `static/`; the
-earlier click-through spike (`design/tally-spike.html`) is published alongside
-at `/tally-spike.html`. It deploys to the `gh-pages` branch: production at the
+(`go run ./cmd/tally -export`), which becomes `index.html` + `static/` — the
+first and only page. It deploys to the `gh-pages` branch: production at the
 branch root on push to `main`, and a preview under `pr-<number>/` for every
 same-repo pull request, with a sticky comment linking to it.
 
 Reproduce a preview locally with `go run ./cmd/tally -export ./_site`, then
-open `_site/index.html`. The spike is also a single self-contained file you
-can open directly.
+open `_site/index.html`.
 
 **One-time repo setting**, required for this to work: **Settings → Pages →
 Build and deployment → Source** must be **"Deploy from a branch"**, branch

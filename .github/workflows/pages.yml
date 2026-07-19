@@ -2,11 +2,10 @@ name: pages
 
 # Publishes the tally UI as the site. The Go app renders itself to a static
 # site (go run ./cmd/tally -export), which becomes index.html + static/ -- the
-# first and only page. (The earlier design/ spike is no longer published.)
-# Deployed to the gh-pages branch: production at the branch root on push to
-# main, and a per-PR preview under pr-<number>/ for same-repo pull requests.
-# Requires a one-time repo setting change -- see CONTRIBUTING.md's "GitHub
-# Pages" section.
+# first and only page. Deployed to the gh-pages branch: production at the branch
+# root on push to main, and a per-PR preview under pr-<number>/ for same-repo
+# pull requests. Requires a one-time repo setting change -- see CONTRIBUTING.md's
+# "GitHub Pages" section.
 
 on:
   push:
