@@ -99,6 +99,11 @@
     --grain-opacity: .035;          /* film grain overlay */
     --scan-opacity: .08;            /* scanlines + vignette overlay */
     --beam-opacity: 1;              /* slow CRT beam sweep (0 = no beam) */
+
+    /* Surface/ink escapes — default to the dark-theme literals so existing
+       themes are unchanged; a light theme overrides them. */
+    --terminal-bg: #000;            /* the command-line bar background */
+    --lab-ink: #fff;                /* tag-chip text mixes toward this (lift on dark) */
   }
 
   /* ---- Slate — calm dark ------------------------------------------------
@@ -157,6 +162,130 @@
     --grain-opacity: 0;
     --scan-opacity: 0;
     --beam-opacity: 0;
+  }
+
+  /* ---- Paper / Almanac — warm light -------------------------------------
+     tally's first light theme: an old almanac page. Aged cream paper, dark
+     sepia ink, a red-letter accent, and a faint ruled grid instead of CRT
+     grunge. The FX budget is off except that hairline grid. The command-line
+     bar becomes a sunken paper field (--terminal-bg light) and tag-chip text
+     darkens (--lab-ink dark) so both read on paper. */
+  [data-theme="paper"]{
+    color-scheme: light;
+
+    /* Surfaces — page, raised leaf, deeper inset */
+    --bg: #ece0c8;
+    --bg-raised: #f5eeda;
+    --bg-raised-2: #e3d5b8;
+
+    /* Ink — sepia */
+    --ink: #33291a;
+    --ink-dim: #6f6144;
+    --ink-faint: #94825f;
+
+    /* Lines — soft ruled */
+    --line: #d8c8a4;
+    --line-strong: #c3ad82;
+
+    /* Accent — red-letter red */
+    --accent: #b23a2a;
+    --accent-strong: #c94e39;
+    --accent-ink: #fbf6e8;        /* cream text on the red accent */
+    --accent-tint: #e9d3c0;       /* faint warm blush behind surfaces */
+    --accent-glow: rgba(178,58,42,.14);
+    --accent-glow-hot: rgba(201,78,57,.28);
+
+    /* Status */
+    --good: #3f8a55;
+    --danger: #99311f;
+    --warn: #9a6b18;
+
+    /* Label hues — deepened for a light ground */
+    --lab-red: #c0392b;
+    --lab-amber: #9a6b18;
+    --lab-green: #3f8a55;
+    --lab-blue: #3a5f9e;
+    --lab-pink: #a4478f;
+    --lab-cyan: #2f8a86;
+
+    /* Type — serif reads great on paper */
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --font-body: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+
+    /* FX budget — flat, but keep a faint sepia rule for the ledger feel */
+    --phosphor: none;
+    --flash: #c94e39;
+    --flash-glow: rgba(201,78,57,.25);
+    --danger-glow: rgba(153,49,31,.22);
+    --grid: rgba(120,95,55,.07);
+    --grain-opacity: 0;
+    --scan-opacity: 0;
+    --beam-opacity: 0;
+
+    /* Light-theme escapes */
+    --terminal-bg: #e0d0ad;       /* sunken paper field, not a black bar */
+    --lab-ink: #33291a;           /* darken chip text for contrast on cream */
+  }
+
+  /* ---- Gruvbox — warm familiar dark -------------------------------------
+     The much-loved retro palette (morhetz/gruvbox): warm charcoal surfaces,
+     soft cream fg, a signature yellow accent, and the palette's own bright
+     ramp for tag hues. Flat, with a whisper of grain for warmth. */
+  [data-theme="gruvbox"]{
+    color-scheme: dark;
+
+    /* Surfaces — bg0 → bg1 */
+    --bg: #282828;
+    --bg-raised: #32302f;
+    --bg-raised-2: #3c3836;
+
+    /* Ink — fg → gray */
+    --ink: #ebdbb2;
+    --ink-dim: #bdae93;
+    --ink-faint: #928374;
+
+    /* Lines — bg1 → bg2 */
+    --line: #3c3836;
+    --line-strong: #504945;
+
+    /* Accent — gruvbox yellow */
+    --accent: #d79921;
+    --accent-strong: #fabd2f;
+    --accent-ink: #282828;        /* dark text on the yellow accent */
+    --accent-tint: #32302f;
+    --accent-glow: rgba(215,153,33,.16);
+    --accent-glow-hot: rgba(250,189,47,.38);
+
+    /* Status */
+    --good: #b8bb26;
+    --danger: #fb4934;
+    --warn: #fe8019;
+
+    /* Label hues — gruvbox bright ramp */
+    --lab-red: #fb4934;
+    --lab-amber: #fabd2f;
+    --lab-green: #b8bb26;
+    --lab-blue: #83a598;
+    --lab-pink: #d3869b;
+    --lab-cyan: #8ec07c;
+
+    /* Type */
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --font-body: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+
+    /* FX budget — flat with a touch of grain */
+    --phosphor: none;
+    --flash: #fe8019;
+    --flash-glow: rgba(254,128,25,.4);
+    --danger-glow: rgba(251,73,52,.4);
+    --grid: transparent;
+    --grain-opacity: .025;
+    --scan-opacity: 0;
+    --beam-opacity: 0;
+
+    /* Terminal bar in gruvbox's darkest (bg0_h), not pure black */
+    --terminal-bg: #1d2021;
+    --lab-ink: #fbf1c7;           /* lift chip text toward gruvbox light0 */
   }
 
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -290,7 +419,7 @@
     display: flex; align-items: center; gap: 8px;
     margin: var(--sp-4) var(--sp-4) 0;
     padding: 8px 12px;
-    background: #000; border: 1px solid var(--line-strong); border-radius: var(--r);
+    background: var(--terminal-bg); border: 1px solid var(--line-strong); border-radius: var(--r);
     box-shadow: inset 0 0 22px -12px var(--accent-glow-hot), 0 0 0 1px rgba(0,0,0,.4);
     font-size: 13px; letter-spacing: .04em; white-space: nowrap; overflow: hidden;
   }
@@ -412,7 +541,7 @@
     display: inline-flex; align-items: center; gap: 6px; border-radius: var(--r);
     padding: 3px 8px 3px 7px; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
     border: 1px solid color-mix(in srgb, var(--lc) 40%, var(--line));
-    color: color-mix(in srgb, var(--lc) 78%, #fff 22%);
+    color: color-mix(in srgb, var(--lc) 78%, var(--lab-ink) 22%);
     background: color-mix(in srgb, var(--lc) 12%, transparent);
   }
   .lab::before{ content: ""; width: 8px; height: 8px; border-radius: 1px; background: var(--lc); flex-shrink: 0; }
