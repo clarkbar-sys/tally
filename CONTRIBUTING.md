@@ -76,8 +76,23 @@ enforces this.
 
 ## Conventions
 
-- Commits: short imperative subject, referencing the issue (e.g. `#12`).
+- Commits: [Conventional Commits](https://www.conventionalcommits.org/) —
+  `type: short imperative subject`, referencing the issue (e.g. `#12`).
+  Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`.
+  [release-please](https://github.com/googleapis/release-please) parses these
+  to version bump and changelog, so the prefix matters: `feat` bumps minor,
+  `fix` bumps patch, a `!` after the type (e.g. `feat!:`) or a `BREAKING
+  CHANGE:` footer bumps major.
 - One ADR per irreversible decision; supersede rather than edit.
 - Provider data and tally-owned annotation (tags, notes, stories) stay
   separated at the schema level ([#7](https://github.com/clarkbar-sys/tally/issues/7))
   so a re-sync never clobbers annotation.
+
+## Releases
+
+[`.github/workflows/release-please.yml`](.github/workflows/release-please.yml)
+runs `release-please` on every push to `main`. It keeps a standing "release
+PR" up to date with the next version bump and changelog, derived from
+Conventional Commit messages since the last release; merging that PR cuts
+the GitHub release and tag. Nothing to do manually beyond writing commits
+with the right prefix.
