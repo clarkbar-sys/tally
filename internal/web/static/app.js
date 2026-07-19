@@ -55,9 +55,36 @@
           };
         }
       };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      // Another tab holds an older version open, blocking this upgrade. The
+      // request stays pending; show a notice and let it resolve on its own once
+      // the other tab closes — no reload needed. (Without this the promise would
+      // hang forever and the app would never render — you couldn't make notches.)
+      req.onblocked = () => notice(
+        'tally is open in another tab (or an older version). Close the other tab — this page resumes automatically.');
+      req.onsuccess = () => {
+        const db = req.result;
+        // If a newer version opens elsewhere later, yield so we never block it.
+        db.onversionchange = () => {
+          db.close();
+          notice('A newer version of tally opened in another tab. Reload this page to continue.');
+        };
+        resolve(db);
+      };
+      req.onerror = () => reject(req.error || new Error('could not open IndexedDB'));
     });
+  }
+
+  // notice replaces the whole view with a message — for blocked/errored storage
+  // states, so the screen is never silently blank.
+  function notice(msg) {
+    const v = view();
+    if (v) v.innerHTML = `<p class="lede" style="padding:var(--sp-4)">${esc(msg)}</p>`;
+  }
+
+  // reportWriteError surfaces a failed persist instead of silently dropping it.
+  function reportWriteError(err) {
+    const m = err && err.message ? err.message : String(err);
+    alert('tally could not save to local storage: ' + m);
   }
 
   function tx(mode, fn) {
@@ -114,7 +141,12 @@
   }
   async function persist(n) {
     n.updatedAt = now();
-    await dbPut(n);
+    try {
+      await dbPut(n);
+    } catch (err) {
+      reportWriteError(err);
+      return;
+    }
     ticker();
   }
   async function createNotch(title, parentId) {
@@ -122,8 +154,13 @@
       id: uid('n_'), title: title.trim(), note: '', tags: [], items: [],
       parentId: parentId || null, createdAt: now(), updatedAt: now(),
     };
+    try {
+      await dbPut(n); // persist first, then adopt into memory, so the two agree
+    } catch (err) {
+      reportWriteError(err);
+      throw err;
+    }
     notches.push(n);
-    await dbPut(n);
     ticker();
     return n;
   }
@@ -333,7 +370,7 @@
       const input = document.getElementById('new-title');
       const title = input.value.trim();
       if (!title) return;
-      createNotch(title, null).then((n) => { location.hash = '#/n/' + n.id; });
+      createNotch(title, null).then((n) => { location.hash = '#/n/' + n.id; }).catch(() => {});
       return;
     }
     if (f.id === 'sub-form') {
@@ -342,7 +379,7 @@
       const box = document.getElementById('sub-title');
       const title = box.value.trim();
       if (!title) return;
-      createNotch(title, parent.id).then(() => renderDetail(parent));
+      createNotch(title, parent.id).then(() => renderDetail(parent)).catch(() => {});
       return;
     }
     if (f.id === 'item-form') {
