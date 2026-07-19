@@ -35,7 +35,7 @@ func Page(v LedgerView) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><title>tally</title><meta name=\"description\" content=\"Personal ledger with provenance. Tailnet-only.\"><link rel=\"stylesheet\" href=\"static/app.css\"></head><body><div class=\"app\"><div class=\"topbar\"><div class=\"brand\"><span class=\"tally-mark\" aria-hidden=\"true\"><span></span><span></span><span></span><span></span><span class=\"slash\"></span></span> tally <span class=\"tagline\">a ledger that accumulates meaning</span></div><button class=\"theme-toggle\" id=\"themeToggle\" type=\"button\" aria-label=\"Toggle light and dark theme\"><span id=\"themeIcon\">🌗</span></button></div><div class=\"demo-banner\">DEMO — synthetic data, not a real ledger</div><section class=\"view active\" aria-label=\"Ledger\"><div class=\"accounts-strip\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1\"><meta name=\"color-scheme\" content=\"dark\"><meta name=\"theme-color\" content=\"#100F0D\"><title>tally</title><meta name=\"description\" content=\"Personal ledger with provenance. Tailnet-only.\"><link rel=\"stylesheet\" href=\"static/app.css\"></head><body><div class=\"app\"><div class=\"topbar\"><div class=\"brand\"><span class=\"tally-mark\" aria-hidden=\"true\"><span></span><span></span><span></span><span></span><span class=\"slash\"></span></span> tally <span class=\"tagline\">a ledger that accumulates meaning</span></div></div><div class=\"demo-banner\">DEMO — synthetic data, not a real ledger</div><section class=\"view active\" aria-label=\"Ledger\"><div class=\"accounts-strip\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -47,7 +47,7 @@ func Page(v LedgerView) templ.Component {
 			var templ_7745c5c3_Var2 string
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(a.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 35, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 34, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 			if templ_7745c5c3_Err != nil {
@@ -82,7 +82,7 @@ func Page(v LedgerView) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(a.Balance)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 36, Col: 86}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 35, Col: 86}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -127,7 +127,7 @@ func Page(v LedgerView) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(a.SyncLabel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 41, Col: 28}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 40, Col: 28}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -145,7 +145,7 @@ func Page(v LedgerView) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(v.Total)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 47, Col: 45}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 46, Col: 45}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -158,7 +158,7 @@ func Page(v LedgerView) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(accountsAcross(v.AccountCount))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 48, Col: 71}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 47, Col: 71}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -171,7 +171,7 @@ func Page(v LedgerView) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(v.Query)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 55, Col: 22}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 54, Col: 22}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -189,7 +189,7 @@ func Page(v LedgerView) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(searchSummary(v))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 62, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 61, Col: 50}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -208,7 +208,7 @@ func Page(v LedgerView) templ.Component {
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(emptySuffix(v.Filtered))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 65, Col: 72}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 64, Col: 72}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -231,7 +231,7 @@ func Page(v LedgerView) templ.Component {
 				var templ_7745c5c3_Var14 string
 				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(t.Merchant)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 73, Col: 24}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 72, Col: 24}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
@@ -254,7 +254,7 @@ func Page(v LedgerView) templ.Component {
 				var templ_7745c5c3_Var15 string
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(t.Meta)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 78, Col: 41}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 77, Col: 41}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 				if templ_7745c5c3_Err != nil {
@@ -289,7 +289,7 @@ func Page(v LedgerView) templ.Component {
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(t.Amount)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 80, Col: 77}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 79, Col: 77}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
@@ -312,13 +312,13 @@ func Page(v LedgerView) templ.Component {
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(versionString())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 88, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/ledger.templ`, Line: 87, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, ". Source on <a href=\"https://github.com/clarkbar-sys/tally\">GitHub</a>.</footer></div><script src=\"static/theme.js\"></script></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, ". Source on <a href=\"https://github.com/clarkbar-sys/tally\">GitHub</a>.</footer></div></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

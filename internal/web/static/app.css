@@ -1,73 +1,33 @@
-  /* ---------- Theme tokens ---------- */
+  /* ---------- Ember Terminal — single dark theme ----------
+     One considered dark theme; no light mode, no toggle. Luminous gold
+     accent on a deep warm-charcoal ground, sharp geometry, money set in
+     tabular mono. Token names are preserved so component styles below apply
+     unchanged. */
   :root{
-    color-scheme: light dark;
-    --bg: #f6f1e6;
-    --bg-raised: #fffdf8;
-    --ink: #2b241c;
-    --ink-dim: #6b6153;
-    --ink-faint: #948a7a;
-    --line: #e2d8c4;
-    --line-strong: #cabb9e;
-    --accent: #8a5a34;
-    --accent-strong: #6e4425;
-    --accent-tint: #efe1cc;
-    --credit: #2f6f4e;
-    --credit-tint: #e2efe6;
-    --debit: #2b241c;
-    --warn: #a3551f;
-    --warn-tint: #f5e2cc;
-    --danger: #a13a34;
-    --chip-bg: #efe6d3;
-    --chip-ink: #5b4a30;
-    --shadow: 0 1px 2px rgba(43,36,28,.06), 0 4px 14px rgba(43,36,28,.06);
-    --radius: 14px;
-    --focus: #2f6f4e;
-  }
-  :root[data-theme="dark"]{
-    --bg: #1c1811;
-    --bg-raised: #241f17;
-    --ink: #ece2cf;
-    --ink-dim: #b8ab92;
-    --ink-faint: #8a7d67;
-    --line: #382f22;
-    --line-strong: #4a3f2d;
-    --accent: #d1a26a;
-    --accent-strong: #e6bd8a;
-    --accent-tint: #33281a;
-    --credit: #7fc79a;
-    --credit-tint: #1f2e24;
-    --debit: #ece2cf;
-    --warn: #e0a869;
-    --warn-tint: #362a19;
-    --danger: #e08a80;
-    --chip-bg: #332a1c;
-    --chip-ink: #d8c7a4;
-    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.35);
-    --focus: #7fc79a;
-  }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg: #1c1811;
-      --bg-raised: #241f17;
-      --ink: #ece2cf;
-      --ink-dim: #b8ab92;
-      --ink-faint: #8a7d67;
-      --line: #382f22;
-      --line-strong: #4a3f2d;
-      --accent: #d1a26a;
-      --accent-strong: #e6bd8a;
-      --accent-tint: #33281a;
-      --credit: #7fc79a;
-      --credit-tint: #1f2e24;
-      --debit: #ece2cf;
-      --warn: #e0a869;
-      --warn-tint: #362a19;
-      --danger: #e08a80;
-      --chip-bg: #332a1c;
-      --chip-ink: #d8c7a4;
-      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.35);
-      --focus: #7fc79a;
-    }
+    color-scheme: dark;
+    --bg: #100f0d;
+    --bg-raised: #17150f;
+    --ink: #efe9da;
+    --ink-dim: #9a917c;
+    --ink-faint: #6a6350;
+    --line: #2c2718;
+    --line-strong: #453d28;
+    --accent: #f0a838;
+    --accent-strong: #ffc264;
+    --accent-ink: #150d00;
+    --accent-tint: #241a0a;
+    --credit: #4fc586;
+    --credit-tint: #10241d;
+    --debit: #efe9da;
+    --warn: #e6a24b;
+    --warn-tint: #241a0a;
+    --danger: #ff6f5e;
+    --chip-bg: #1e1b13;
+    --chip-ink: #cfc8b5;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.45);
+    --radius: 3px;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --focus: #f0a838;
   }
 
   *{ box-sizing: border-box; }
@@ -134,21 +94,6 @@
   .brand .tagline{
     display: none;
   }
-  .theme-toggle{
-    border: 1px solid var(--line-strong);
-    background: var(--bg-raised);
-    border-radius: 999px;
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 17px;
-    cursor: pointer;
-    box-shadow: var(--shadow);
-  }
-  .theme-toggle:active{ transform: translateY(1px); }
 
   /* ---------- Demo banner ---------- */
   .demo-banner{
@@ -187,11 +132,7 @@
   }
   .tab.active{
     background: var(--accent);
-    color: #fff8ec;
-  }
-  :root[data-theme="dark"] .tab.active{ color: #211a10; }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]) .tab.active{ color: #211a10; }
+    color: var(--accent-ink);
   }
 
   .view{ display: none; padding: 0 16px; }
@@ -228,11 +169,14 @@
     margin-bottom: 4px;
   }
   .account-balance{
+    font-family: var(--mono);
     font-size: 18px;
-    font-weight: 700;
+    font-weight: 600;
+    letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
     margin-bottom: 6px;
   }
+  .account-card.total .account-balance{ color: var(--accent-strong); }
   .account-balance.negative{ color: var(--danger); }
   .account-sync{
     font-size: 11px;
@@ -311,8 +255,10 @@
     margin-top: 2px;
   }
   .tx-amount{
-    font-weight: 700;
+    font-family: var(--mono);
+    font-weight: 600;
     font-size: 15px;
+    letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     color: var(--debit);
@@ -332,7 +278,7 @@
     background: var(--chip-bg);
     color: var(--chip-ink);
     border: none;
-    border-radius: 999px;
+    border-radius: var(--radius);
     padding: 5px 10px;
     font-size: 12px;
     font-weight: 600;
@@ -352,7 +298,7 @@
     background: transparent;
     border: 1px dashed var(--line-strong);
     color: var(--ink-faint);
-    border-radius: 999px;
+    border-radius: var(--radius);
     padding: 5px 10px;
     font-size: 12px;
     font-weight: 600;
@@ -363,7 +309,7 @@
     border: 1px solid var(--accent);
     background: var(--bg);
     color: var(--ink);
-    border-radius: 999px;
+    border-radius: var(--radius);
     padding: 5px 10px;
     font-size: 12px;
     width: 96px;
@@ -472,8 +418,10 @@
   .story-tx-name{ font-weight: 600; font-size: 14.5px; }
   .story-tx-date{ font-size: 12px; color: var(--ink-faint); margin-left: 6px; }
   .story-tx-amount{
-    font-weight: 700;
+    font-family: var(--mono);
+    font-weight: 600;
     font-size: 14px;
+    letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
@@ -506,6 +454,8 @@
     font-size: 16px;
   }
   .story-total .value{
+    font-family: var(--mono);
+    letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
     color: var(--accent-strong);
   }
