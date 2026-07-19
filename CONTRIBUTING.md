@@ -1,9 +1,12 @@
 # Contributing to tally
 
-tally is a single-user, tailnet-only personal ledger. Decisions live in
-[`docs/adr/`](docs/adr/); security posture in [`docs/security/`](docs/security/).
-Read those first — they explain why the stack is Go + templ + HTMX, why the
-datastore is SQLite, and why secret handling is the way it is.
+tally is a local-first, generic container for notes, checklists, and reminders
+(see [epic #1](https://github.com/clarkbar-sys/tally/issues/1) for the pivot
+from an earlier finance-ledger scope). Decisions live in [`docs/adr/`](docs/adr/);
+security posture in [`docs/security/`](docs/security/). Read those first —
+they explain why the stack is Go + templ + HTMX and why secret handling is the
+way it is; the SQLite/sync/tailnet decisions there describe the shelved
+finance-first build and apply again once a server is actually justified.
 
 ## Setup
 
