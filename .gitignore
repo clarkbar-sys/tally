@@ -43,3 +43,7 @@ coverage.*
 *.swp
 .idea/
 .vscode/
+
+# --- Agent scratch ---------------------------------------------------------
+# Transient git worktrees created by isolated background agents. Never commit.
+.claude/worktrees/
