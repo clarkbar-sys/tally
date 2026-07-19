@@ -1,30 +1,35 @@
-  /* ---------- tally — Ember Terminal · Grunge/Flash design system ----------
+  /* ---------- tally — Amber CRT · Terminal design system ----------
      Hello-world shell + widget gallery. One considered dark theme (no light
-     mode, no toggle): a luminous gold accent on a deep warm-charcoal ground,
-     sharp geometry, monospace chrome, a serif kept only for display text.
-     This variant keeps the ember identity but dials it grittier and louder —
-     a blueprint grid + film grain + scanlines + vignette over the ground, neon
-     ember glow on the wordmark / section bars / primary buttons, and a hot
-     "flash" hue on live/danger accents. All motion sits behind
-     prefers-reduced-motion. This file is the styling sandbox — iterate here. */
+     mode, no toggle): an amber-phosphor terminal on near-black glass, tuned
+     toward a vintage CRT + Bloomberg-terminal motif — dense monospace chrome,
+     amber text with a soft phosphor bloom, a command line up top and a
+     function-key bar along the bottom. A serif is kept only for display text.
+     Texture is deliberately restrained now: a faint blueprint grid + film grain
+     + gently dialed-down scanlines + vignette over the ground, with a slow CRT
+     beam sweeping the screen. Ember/gold stays the accent; a hot "flash" hue
+     marks live/danger. All motion sits behind prefers-reduced-motion. This file
+     is the styling sandbox — iterate here. */
   :root{
     color-scheme: dark;
 
-    --bg: #100f0d;
-    --bg-raised: #17150f;
-    --bg-raised-2: #1e1b13;
-    --ink: #efe9da;
-    --ink-dim: #9a917c;
-    --ink-faint: #6a6350;
-    --line: #2c2718;
-    --line-strong: #453d28;
+    --bg: #0a0703;
+    --bg-raised: #120d05;
+    --bg-raised-2: #191108;
+    --ink: #f6c983;
+    --ink-dim: #b98f4e;
+    --ink-faint: #7c5e33;
+    --line: #2c2110;
+    --line-strong: #453515;
 
-    --accent: #f0a838;
-    --accent-strong: #ffc264;
-    --accent-ink: #150d00;
-    --accent-tint: #241a0a;
-    --accent-glow: rgba(240,168,56,.16);
-    --accent-glow-hot: rgba(255,194,100,.5);
+    --accent: #ffb000;
+    --accent-strong: #ffce5c;
+    --accent-ink: #140b00;
+    --accent-tint: #241804;
+    --accent-glow: rgba(255,176,0,.18);
+    --accent-glow-hot: rgba(255,206,92,.55);
+
+    /* Phosphor bloom — soft amber halo on terminal text */
+    --phosphor: 0 0 6px rgba(255,176,0,.28);
 
     /* Flash — a hotter ember spark for live/danger accents */
     --flash: #ff7a3d;
@@ -32,9 +37,9 @@
     --danger-glow: rgba(255,111,94,.5);
 
     /* Grunge texture knobs */
-    --grid: rgba(240,168,56,.038);
-    --grain-opacity: .07;
-    --scan-opacity: .5;
+    --grid: rgba(255,176,0,.032);
+    --grain-opacity: .05;
+    --scan-opacity: .16;
 
     --good: #4fc586;
     --danger: #ff6f5e;
@@ -71,6 +76,7 @@
     font-size: 14px;
     line-height: 1.45;
     letter-spacing: .01em;
+    text-shadow: var(--phosphor);
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
   }
@@ -82,14 +88,36 @@
     opacity: var(--grain-opacity);
     mix-blend-mode: overlay;
   }
-  /* scanlines + vignette */
+  /* scanlines (dialed down) + vignette */
   body::after{
     background:
-      repeating-linear-gradient(0deg, rgba(0,0,0,.5) 0, rgba(0,0,0,.5) 1px, transparent 1px, transparent 3px),
+      repeating-linear-gradient(0deg, rgba(0,0,0,.34) 0, rgba(0,0,0,.34) 1px, transparent 1px, transparent 4px),
       radial-gradient(130% 120% at 50% 46%, transparent 58%, rgba(6,4,1,.55) 100%);
     opacity: var(--scan-opacity);
   }
+  /* CRT beam — a slow bright band sweeping down the screen */
+  .crt-beam{
+    position: fixed; inset: 0; pointer-events: none; z-index: 51; overflow: hidden;
+  }
+  .crt-beam::before{
+    content: ""; position: absolute; left: 0; right: 0; height: 34vh; top: -34vh;
+    background: linear-gradient(180deg, transparent, rgba(255,176,0,.05) 46%, rgba(255,206,92,.09) 50%, rgba(255,176,0,.05) 54%, transparent);
+    animation: beam 7s linear infinite;
+  }
 
+  @keyframes beam{
+    0%{ transform: translateY(0); }
+    100%{ transform: translateY(134vh); }
+  }
+  /* whole-screen amber flicker — very subtle brightness wobble */
+  @keyframes crtHum{
+    0%, 100%{ opacity: 1; }
+    92%{ opacity: 1; }
+    94%{ opacity: .965; }
+    96%{ opacity: 1; }
+    97%{ opacity: .985; }
+    98%{ opacity: 1; }
+  }
   @keyframes flicker{
     0%, 17%, 21%, 24%, 55%, 100%{ opacity: 1; filter: drop-shadow(0 0 7px var(--accent-glow-hot)); }
     18%, 22%{ opacity: .66; filter: drop-shadow(0 0 2px var(--accent-glow)); }
@@ -99,11 +127,28 @@
     0%, 100%{ box-shadow: 0 0 0 0 var(--flash-glow), 0 4px 16px -6px var(--accent-glow); }
     50%{ box-shadow: 0 0 18px 1px var(--flash-glow), 0 6px 22px -4px var(--accent-glow-hot); }
   }
+  /* blinking terminal cursor */
+  @keyframes caret{ 0%, 49%{ opacity: 1; } 50%, 100%{ opacity: 0; } }
+  /* boot-in — rows type on with a short slide + fade */
+  @keyframes bootIn{ from{ opacity: 0; transform: translateY(6px); } to{ opacity: 1; transform: none; } }
   button, input, textarea, select{ font: inherit; color: inherit; }
   h1, h2, h3, p{ margin: 0; }
   a{ color: var(--accent-strong); }
 
-  .app{ max-width: 620px; margin: 0 auto; padding: 0 0 var(--sp-6); }
+  .app{ max-width: 620px; margin: 0 auto; padding: 0 0 var(--sp-6); animation: crtHum 9s infinite steps(60, end); }
+
+  /* staggered boot-in for the stacked sections */
+  main > .section, main > .lede{ animation: bootIn .32s both ease-out; }
+  main > .lede{ animation-delay: .02s; }
+  main > .section:nth-of-type(1){ animation-delay: .06s; }
+  main > .section:nth-of-type(2){ animation-delay: .12s; }
+  main > .section:nth-of-type(3){ animation-delay: .18s; }
+  main > .section:nth-of-type(4){ animation-delay: .24s; }
+  main > .section:nth-of-type(5){ animation-delay: .30s; }
+  main > .section:nth-of-type(6){ animation-delay: .36s; }
+  main > .section:nth-of-type(7){ animation-delay: .42s; }
+  main > .section:nth-of-type(8){ animation-delay: .48s; }
+  main > .section:nth-of-type(9){ animation-delay: .54s; }
 
   /* ---------- header ---------- */
   .topbar{
@@ -126,6 +171,32 @@
     white-space: nowrap;
   }
   .version .dot{ width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 6px color-mix(in srgb, var(--good) 60%, transparent); }
+
+  /* ---------- command line (Bloomberg-style) ---------- */
+  .cmdline{
+    display: flex; align-items: center; gap: 8px;
+    margin: var(--sp-4) var(--sp-4) 0;
+    padding: 8px 12px;
+    background: #000; border: 1px solid var(--line-strong); border-radius: var(--r);
+    box-shadow: inset 0 0 22px -12px var(--accent-glow-hot), 0 0 0 1px rgba(0,0,0,.4);
+    font-size: 13px; letter-spacing: .04em; white-space: nowrap; overflow: hidden;
+  }
+  .cmdline .prompt{ color: var(--accent-strong); font-weight: 700; }
+  .cmdline .cmd{ color: var(--ink); text-transform: uppercase; }
+  .cmdline .go{ color: var(--accent-ink); background: var(--accent); border-radius: 2px; padding: 0 6px; font-weight: 700; font-size: 11px; letter-spacing: .12em; text-shadow: none; }
+  .cmdline .caret{ width: 8px; height: 15px; background: var(--accent-strong); box-shadow: 0 0 8px var(--accent-glow-hot); animation: caret 1.05s steps(1, end) infinite; margin-left: 2px; }
+
+  /* ---------- status ticker ---------- */
+  .ticker{
+    display: flex; gap: var(--sp-5); align-items: center;
+    margin: var(--sp-3) var(--sp-4) 0;
+    padding: 6px 12px; overflow: hidden;
+    border: 1px solid var(--line); border-radius: var(--r); background: var(--bg-raised);
+    font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-dim);
+  }
+  .ticker .stat{ display: inline-flex; gap: 7px; align-items: baseline; white-space: nowrap; }
+  .ticker .stat b{ color: var(--ink); font-weight: 700; }
+  .ticker .stat .up{ color: var(--good); } .ticker .stat .dn{ color: var(--danger); }
 
   main{ padding: 0 var(--sp-4); }
   .lede{ color: var(--ink-dim); font-size: 13px; margin: var(--sp-4) 2px var(--sp-2); }
