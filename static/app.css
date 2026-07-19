@@ -1,56 +1,81 @@
-  /* ---------- tally — Amber CRT · Terminal design system ----------
-     Hello-world shell + widget gallery. One considered dark theme (no light
-     mode, no toggle): an amber-phosphor terminal on near-black glass, tuned
-     toward a vintage CRT + Bloomberg-terminal motif — dense monospace chrome,
-     amber text, a command line up top and a status ticker beneath it. A serif
-     is kept only for display text.
+  /* ---------- tally — themeable design system ----------
+     One component layer, many themes. Every color, font and texture the UI
+     draws is read from a CSS custom property (a "token"); a theme is nothing
+     but a block that fills those tokens. Components below never hardcode a
+     colour — they reference tokens only — so a new theme is authored purely
+     by refilling the contract, with no component edits.
 
-     Tuned for daily legibility: this is a ledger you read every day, so the
-     effects budget is spent where it earns its keep. The phosphor bloom is
-     reserved for identity/display text (brand, card titles) rather than smeared
-     across every glyph; the blueprint grid, film grain, scanlines, vignette and
-     CRT beam are all dialled down and slowed so content stays crisp. Bright
-     amber is reserved for primary/interactive surfaces — section headers sit
-     back so hierarchy reads. Ember/gold is the accent; a hot "flash" hue marks
-     live/danger. All motion sits behind prefers-reduced-motion. This file is
-     the styling sandbox — iterate here. */
+     Two tiers of token:
+       • System tokens (:root) — spacing + radius. Shared by every theme,
+         never overridden. These set rhythm, not identity.
+       • Theme tokens (the THEME CONTRACT block) — surfaces, ink, lines,
+         accent, status, label hues, type, and the FX budget. A theme owns
+         all of these.
+
+     The default theme is Amber CRT — an amber-phosphor terminal on near-black
+     glass, a vintage CRT + Bloomberg-terminal motif: dense monospace chrome,
+     amber text, a command line and a status ticker. It carries a deliberate
+     "FX budget" — phosphor bloom, blueprint grid, film grain, scanlines,
+     vignette and a slow CRT beam — spent where it earns its keep (bloom on
+     identity/display text, everything else dialled down and slowed so content
+     stays crisp). All of that budget is expressed as tokens (--phosphor,
+     --grid, --grain-opacity, --scan-opacity, --beam-opacity), so a calmer
+     theme simply dials them toward 0/none and the CRT character disappears
+     without touching a single component rule. All motion also sits behind
+     prefers-reduced-motion.
+
+     See docs/theming.md for the full contract and a copy-paste template for
+     adding a theme. */
+
+  /* ---- System tokens: shared by every theme, never overridden ---- */
   :root{
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+    --r: 3px;
+  }
+
+  /* ================= THEME CONTRACT ==================================
+     A theme fills exactly the slots below. `:root` carries the default
+     (Amber CRT) so the app is fully themed even with no data-theme
+     attribute set; the identical block is also tagged
+     [data-theme="amber-crt"] so a theme switcher can select it by name.
+
+     To add a theme: copy this whole block, change the selector to
+     [data-theme="your-name"], set color-scheme (dark|light), and refill
+     every slot. Set colours nowhere else — components read only tokens.
+     For a calm/flat theme, dial the FX budget toward 0/none.
+     ================================================================== */
+  :root,
+  [data-theme="amber-crt"]{
     color-scheme: dark;
 
+    /* Surfaces — page, raised panel, deepest inset */
     --bg: #0a0703;
     --bg-raised: #120d05;
     --bg-raised-2: #191108;
+
+    /* Ink — primary, dimmed, faint text */
     --ink: #f6c983;
     --ink-dim: #b98f4e;
     --ink-faint: #a37e49;
+
+    /* Lines — hairline, stronger divider */
     --line: #2c2110;
     --line-strong: #453515;
 
+    /* Accent — the interactive/identity hue */
     --accent: #ffb000;
     --accent-strong: #ffce5c;
-    --accent-ink: #140b00;
-    --accent-tint: #241804;
+    --accent-ink: #140b00;        /* text/icon that sits ON the accent */
+    --accent-tint: #241804;       /* faint accent wash behind surfaces */
     --accent-glow: rgba(255,176,0,.18);
     --accent-glow-hot: rgba(255,206,92,.55);
 
-    /* Phosphor bloom — soft amber halo on terminal text */
-    --phosphor: 0 0 6px rgba(255,176,0,.28);
-
-    /* Flash — a hotter ember spark for live/danger accents */
-    --flash: #ff7a3d;
-    --flash-glow: rgba(255,122,61,.55);
-    --danger-glow: rgba(255,111,94,.5);
-
-    /* Grunge texture knobs */
-    --grid: rgba(255,176,0,.028);
-    --grain-opacity: .035;
-    --scan-opacity: .08;
-
+    /* Status */
     --good: #4fc586;
     --danger: #ff6f5e;
     --warn: #e6a24b;
 
-    /* label hues */
+    /* Label hues — tag chips */
     --lab-red: #ff6f5e;
     --lab-amber: #f0a838;
     --lab-green: #4fc586;
@@ -58,11 +83,22 @@
     --lab-pink: #e08adf;
     --lab-cyan: #5ad6d0;
 
+    /* Type — display (serif) + body (mono) stacks */
     --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
     --font-body: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, monospace;
 
-    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
-    --r: 3px;
+    /* ---- FX budget — dial toward 0/none for a calm theme ---- */
+    /* Phosphor bloom — soft halo on identity/display text ("none" kills it) */
+    --phosphor: 0 0 6px rgba(255,176,0,.28);
+    /* Flash — a hotter spark for live/danger accents */
+    --flash: #ff7a3d;
+    --flash-glow: rgba(255,122,61,.55);
+    --danger-glow: rgba(255,111,94,.5);
+    /* Grunge/CRT texture knobs (0 = off) */
+    --grid: rgba(255,176,0,.028);   /* blueprint grid line colour+alpha */
+    --grain-opacity: .035;          /* film grain overlay */
+    --scan-opacity: .08;            /* scanlines + vignette overlay */
+    --beam-opacity: 1;              /* slow CRT beam sweep (0 = no beam) */
   }
 
   *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -70,7 +106,7 @@
   body{
     background:
       radial-gradient(820px 460px at 50% -8%, var(--accent-tint), transparent 62%),
-      radial-gradient(1100px 680px at 50% 118%, rgba(255,111,94,.05), transparent 70%),
+      radial-gradient(1100px 680px at 50% 118%, color-mix(in srgb, var(--danger) 5%, transparent), transparent 70%),
       linear-gradient(var(--grid) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid) 1px, transparent 1px),
       var(--bg);
@@ -102,10 +138,14 @@
   /* CRT beam — a slow bright band sweeping down the screen */
   .crt-beam{
     position: fixed; inset: 0; pointer-events: none; z-index: 51; overflow: hidden;
+    opacity: var(--beam-opacity);
   }
   .crt-beam::before{
     content: ""; position: absolute; left: 0; right: 0; height: 34vh; top: -34vh;
-    background: linear-gradient(180deg, transparent, rgba(255,176,0,.028) 46%, rgba(255,206,92,.05) 50%, rgba(255,176,0,.028) 54%, transparent);
+    background: linear-gradient(180deg, transparent,
+      color-mix(in srgb, var(--accent) 2.8%, transparent) 46%,
+      color-mix(in srgb, var(--accent-strong) 5%, transparent) 50%,
+      color-mix(in srgb, var(--accent) 2.8%, transparent) 54%, transparent);
     animation: beam 13s linear infinite;
   }
 
