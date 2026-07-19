@@ -16,7 +16,10 @@
 //   Notch { id, title, note, tags:[{name,color}], items:[{id,text,done}],
 //           parentId:string|null, createdAt, updatedAt }
 // A sub-notch is an ordinary notch whose parentId points at its parent. Notes,
-// checklists, and tags are embedded in the notch document.
+// checklists, and tags are embedded in the notch document. Any notch can be
+// re-parented after the fact (the "Parent" picker on the detail view) to group
+// existing notches — the only restriction is that a notch can't be moved under
+// itself or one of its own descendants, which would make a cycle.
 
 (() => {
   'use strict';
@@ -129,11 +132,24 @@
     return out;
   }
 
-  // n plus every notch beneath it (for cascade delete)
+  // n plus every notch beneath it (for cascade delete and the move guard)
   function subtree(n) {
     const out = [n];
     for (const c of notches.filter((x) => x.parentId === n.id)) out.push(...subtree(c));
     return out;
+  }
+
+  // A readable "A / B / C" path for a notch, so nested targets in the move
+  // picker are distinguishable when titles repeat.
+  function pathLabel(n) {
+    return trail(n).concat(n).map((x) => x.title.trim() || 'untitled').join(' / ');
+  }
+
+  // Valid new parents for n: every notch that isn't n or one of n's own
+  // descendants. Moving n under its own subtree would create a cycle.
+  function moveTargets(n) {
+    const blocked = new Set(subtree(n).map((x) => x.id));
+    return sortByUpdated(notches.filter((x) => !blocked.has(x.id)));
   }
 
   async function load() {
@@ -299,6 +315,12 @@
         <h2><span>Notch</span><button class="btn danger sm" id="delete" type="button">Delete</button></h2>
         <div class="section-body stack">
           <label class="field"><span>Title</span><input class="input" id="title" type="text" value="${esc(n.title)}" placeholder="Untitled"/></label>
+          <label class="field"><span>Parent</span>
+            <select class="select" id="parent">
+              <option value=""${n.parentId ? '' : ' selected'}>— top level —</option>
+              ${moveTargets(n).map((t) => `<option value="${esc(t.id)}"${t.id === n.parentId ? ' selected' : ''}>${esc(pathLabel(t))}</option>`).join('')}
+            </select>
+          </label>
         </div>
       </section>
 
@@ -444,6 +466,14 @@
   }
 
   function onChange(e) {
+    if (e.target.id === 'parent') {
+      const n = currentDetail(); if (!n) return;
+      const val = e.target.value || null;
+      if (val === (n.parentId || null)) return; // no-op reselect
+      n.parentId = val;
+      persist(n).then(() => renderDetail(n)); // re-render: breadcrumb + siblings move
+      return;
+    }
     const item = e.target.closest('[data-item]');
     if (item && e.target.matches('input[type=checkbox]')) {
       const n = currentDetail(); if (!n) return;
