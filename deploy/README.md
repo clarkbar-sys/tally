@@ -10,6 +10,27 @@ This is the **proof-of-life** deploy: the service serves a health endpoint and
 an "alive" page. It exists to prove the whole path — systemd, a separate tailnet
 identity, HTTPS — works before the ledger is built on top of it.
 
+## One-line install
+
+The root [`install.sh`](../install.sh) is a bootstrap: it clones (or updates)
+this repo onto the box and then runs `deploy/install.sh` for you.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/clarkbar-sys/tally/main/install.sh | sudo sh
+```
+
+**Caveat while this repo is private:** an anonymous `curl` of a private
+GitHub repo returns 404, so the one-liner above won't work as-is — the fetch
+of `install.sh` itself needs authentication. Until the repo is public, either:
+
+- clone the repo yourself and run `sudo sh deploy/install.sh` directly (see
+  below), or
+- fetch `install.sh` with an authenticated request (e.g. a token in the
+  `Authorization` header, or `gh api`) and pipe that into `sudo sh`.
+
+It becomes a clean anonymous `curl | sudo sh` one-liner once the repo goes
+public. It's safe to re-run any time to pull and install the latest `main`.
+
 ## Prerequisites
 
 1. A checkout of this repo on the box.
