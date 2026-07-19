@@ -1,4 +1,8 @@
 # tally
+
+[![CI](https://github.com/clarkbar-sys/tally/actions/workflows/ci.yml/badge.svg)](https://github.com/clarkbar-sys/tally/actions/workflows/ci.yml)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
+
 Personal ledger with provenance — aggregate financial data, then annotate it over time. Tailnet-only.
 
 A [tally stick](https://en.wikipedia.org/wiki/Tally_stick): notched wood, split so both parties hold half the record. Pull financial data in automatically, then let it be *annotated* — tagged, narrated, and threaded into stories that span months. Aggregation is table stakes; the annotation layer is the point.
