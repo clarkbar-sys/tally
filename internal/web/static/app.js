@@ -520,8 +520,54 @@
     }
   }
 
+  // ---------- theme ----------
+  // Themes are pure CSS (a [data-theme] token block in app.css); switching is
+  // just setting data-theme on <html>. The choice is a per-browser preference
+  // (tally is local-first — no account), stored in localStorage. An inline
+  // script in <head> applies it before first paint; this wires the picker and
+  // keeps the browser-chrome meta tags in step with the active theme.
+  const THEME_KEY = 'tally.theme';
+  const DEFAULT_THEME = 'amber-crt';
+
+  function setMetaContent(name, value) {
+    let m = document.querySelector(`meta[name="${name}"]`);
+    if (!m) { m = document.createElement('meta'); m.setAttribute('name', name); document.head.appendChild(m); }
+    m.setAttribute('content', value);
+  }
+
+  // Read the active theme's own tokens so <meta theme-color>/color-scheme match
+  // it — no per-theme table to maintain, it just follows the CSS.
+  function syncThemeMeta() {
+    const cs = getComputedStyle(document.documentElement);
+    const bg = cs.getPropertyValue('--bg').trim();
+    const scheme = (cs.colorScheme || cs.getPropertyValue('color-scheme') || '').trim();
+    if (bg) setMetaContent('theme-color', bg);
+    if (scheme) setMetaContent('color-scheme', scheme);
+  }
+
+  function applyTheme(id, persist) {
+    document.documentElement.setAttribute('data-theme', id);
+    if (persist) { try { localStorage.setItem(THEME_KEY, id); } catch (e) {} }
+    syncThemeMeta();
+  }
+
+  function initTheme() {
+    let stored = null;
+    try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
+    // The inline head script already set data-theme from storage; fall back to
+    // that, then the default. Don't persist on load — only an explicit pick.
+    const current = stored || document.documentElement.getAttribute('data-theme') || DEFAULT_THEME;
+    applyTheme(current, false);
+    const sel = document.getElementById('theme-select');
+    if (sel) {
+      sel.value = current;
+      sel.addEventListener('change', () => applyTheme(sel.value, true));
+    }
+  }
+
   // ---------- boot ----------
   async function boot() {
+    initTheme(); // independent of IndexedDB — theming works even if the DB can't open
     try {
       _db = await openDB();
       await load();
