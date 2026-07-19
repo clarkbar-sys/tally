@@ -265,6 +265,26 @@
   }
   .version .dot{ width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 6px color-mix(in srgb, var(--good) 60%, transparent); }
 
+  /* ---------- theme picker ---------- */
+  .topbar-right{ display: flex; align-items: center; gap: var(--sp-2); }
+  .theme-picker{ display: inline-flex; }
+  .theme-picker select{
+    appearance: none; -webkit-appearance: none;
+    background-color: var(--bg-raised); color: var(--ink-dim);
+    border: 1px solid var(--line-strong); border-radius: var(--r);
+    padding: 5px 26px 5px 10px;
+    font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+    cursor: pointer; transition: border-color .12s ease, color .12s ease;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink-dim) 50%), linear-gradient(135deg, var(--ink-dim) 50%, transparent 50%);
+    background-position: calc(100% - 14px) center, calc(100% - 9px) center;
+    background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+  }
+  .theme-picker select:hover{ border-color: var(--accent); color: var(--ink); }
+  .theme-picker select:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* screen-reader-only label */
+  .visually-hidden{ position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
   /* ---------- command line (Bloomberg-style) ---------- */
   .cmdline{
     display: flex; align-items: center; gap: 8px;
