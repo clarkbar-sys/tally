@@ -3,7 +3,7 @@
 [![CI](https://github.com/clarkbar-sys/tally/actions/workflows/ci.yml/badge.svg)](https://github.com/clarkbar-sys/tally/actions/workflows/ci.yml)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
 
-A generic container for notes, checklists, and reminders — closer to a Trello card than a ledger. Make a **tally**, then attach whatever's relevant to it: notes, checklist items, due dates, and eventually financial transactions. A grocery list is a tally full of checklist items; "the kitchen renovation" is a tally full of notes, reminders, and eventually the transactions that belong to it.
+A generic container for notes, checklists, and reminders — closer to a Trello card than a ledger. Make a **notch** — a mark on your tally — then attach whatever's relevant: notes, checklist items, tags, due dates, **sub-notches**, and eventually financial transactions. A grocery list is a notch full of checklist items; "the kitchen renovation" is a notch full of notes, reminders, and sub-notches. (Resolving notches into a running *tally* is a later concept.)
 
 A [tally stick](https://en.wikipedia.org/wiki/Tally_stick): notched wood, split so both parties hold half the record — annotation is the point, aggregation (of anything, finance included) is just one input to it.
 

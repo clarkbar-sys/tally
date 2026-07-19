@@ -2,33 +2,57 @@
 //
 // tally — local-first client app (epic #1).
 //
-// The whole product runs here in the browser: a generic "tally" (a Trello-card
-// container) with attachments — a note, a checklist, and tags — persisted in
-// IndexedDB. No server, no network, no auth, no sync. Reload is the test:
-// everything survives it because it lives in this browser's IndexedDB.
+// The whole product runs here in the browser. A "notch" is a generic
+// container — a mark carved on your tally — that you attach things to: a note,
+// a checklist, tags, and other notches (sub-notches, parent/child like GitHub
+// sub-issues). Everything persists in IndexedDB: no server, no network, no
+// auth, no sync. Reload is the test — it all survives, because it lives in this
+// browser.
 //
-// Data model (one object store, `tallies`, keyed by id):
-//   Tally { id, title, note, tags:[{name,color}], items:[{id,text,done}],
-//           createdAt, updatedAt }
-// Attachments are embedded in the tally document — the simplest thing that
-// supports create/read/update/delete of a tally and of its attachments.
+// (A "tally" — resolving/tallying-up notches — is a later concept; v1 is just
+// the notches and their attachments.)
+//
+// Data model (one object store, `notches`, keyed by id):
+//   Notch { id, title, note, tags:[{name,color}], items:[{id,text,done}],
+//           parentId:string|null, createdAt, updatedAt }
+// A sub-notch is an ordinary notch whose parentId points at its parent. Notes,
+// checklists, and tags are embedded in the notch document.
 
 (() => {
   'use strict';
 
   // ---------- IndexedDB ----------
   const DB_NAME = 'tally';
-  const STORE = 'tallies';
+  const DB_VERSION = 2;
+  const STORE = 'notches';
+  const OLD_STORE = 'tallies'; // v1 name, migrated forward
   let _db = null;
 
   function openDB() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1);
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
         const db = req.result;
+        const upgradeTx = req.transaction;
         if (!db.objectStoreNames.contains(STORE)) {
-          const os = db.createObjectStore(STORE, { keyPath: 'id' });
-          os.createIndex('updatedAt', 'updatedAt');
+          db.createObjectStore(STORE, { keyPath: 'id' });
+        }
+        // v1 → v2: carry old `tallies` forward as top-level notches, then drop
+        // the old store. Existing local data is preserved, not wiped.
+        if (db.objectStoreNames.contains(OLD_STORE)) {
+          const src = upgradeTx.objectStore(OLD_STORE);
+          const dest = upgradeTx.objectStore(STORE);
+          src.openCursor().onsuccess = (ev) => {
+            const cur = ev.target.result;
+            if (cur) {
+              const rec = cur.value;
+              if (rec.parentId === undefined) rec.parentId = null;
+              dest.put(rec);
+              cur.continue();
+            } else {
+              db.deleteObjectStore(OLD_STORE);
+            }
+          };
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -49,37 +73,65 @@
 
   const dbAll = () => tx('readonly', (s) => s.getAll());
   const dbPut = (rec) => tx('readwrite', (s) => s.put(rec));
-  const dbDel = (id) => tx('readwrite', (s) => s.delete(id));
+  const dbDelMany = (ids) => tx('readwrite', (s) => { ids.forEach((id) => s.delete(id)); });
 
   // ---------- state ----------
-  let tallies = []; // in-memory source of truth, mirrored to IndexedDB
+  let notches = []; // in-memory source of truth, mirrored to IndexedDB
   const now = () => Date.now();
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  const byId = (id) => tallies.find((t) => t.id === id);
+  const byId = (id) => notches.find((n) => n.id === id);
 
   const PALETTE = ['red', 'amber', 'green', 'blue', 'pink', 'cyan'];
 
+  const topLevel = () => sortByUpdated(notches.filter((n) => !n.parentId));
+  const childrenOf = (id) => sortByUpdated(notches.filter((n) => n.parentId === id));
+  const sortByUpdated = (arr) => [...arr].sort((a, b) => b.updatedAt - a.updatedAt);
+
+  // ancestors of n, oldest → nearest (for the breadcrumb)
+  function trail(n) {
+    const out = [];
+    const seen = new Set();
+    let cur = n;
+    while (cur && cur.parentId && !seen.has(cur.parentId)) {
+      seen.add(cur.parentId);
+      const p = byId(cur.parentId);
+      if (!p) break;
+      out.unshift(p);
+      cur = p;
+    }
+    return out;
+  }
+
+  // n plus every notch beneath it (for cascade delete)
+  function subtree(n) {
+    const out = [n];
+    for (const c of notches.filter((x) => x.parentId === n.id)) out.push(...subtree(c));
+    return out;
+  }
+
   async function load() {
-    tallies = await dbAll();
+    notches = await dbAll();
   }
-  async function persist(t) {
-    t.updatedAt = now();
-    await dbPut(t);
+  async function persist(n) {
+    n.updatedAt = now();
+    await dbPut(n);
     ticker();
   }
-  async function createTally(title) {
-    const t = {
-      id: uid('t_'), title: title.trim(), note: '', tags: [], items: [],
-      createdAt: now(), updatedAt: now(),
+  async function createNotch(title, parentId) {
+    const n = {
+      id: uid('n_'), title: title.trim(), note: '', tags: [], items: [],
+      parentId: parentId || null, createdAt: now(), updatedAt: now(),
     };
-    tallies.push(t);
-    await dbPut(t);
+    notches.push(n);
+    await dbPut(n);
     ticker();
-    return t;
+    return n;
   }
-  async function removeTally(t) {
-    tallies = tallies.filter((x) => x !== t);
-    await dbDel(t.id);
+  async function removeNotch(n) {
+    const doomed = subtree(n);
+    const ids = new Set(doomed.map((x) => x.id));
+    notches = notches.filter((x) => !ids.has(x.id));
+    await dbDelMany([...ids]);
     ticker();
   }
 
@@ -88,58 +140,80 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  const sortedTallies = () => [...tallies].sort((a, b) => b.updatedAt - a.updatedAt);
-
-  function itemStats(t) {
-    const total = t.items.length;
-    const done = t.items.filter((i) => i.done).length;
-    return { total, done };
+  function itemStats(n) {
+    return { total: n.items.length, done: n.items.filter((i) => i.done).length };
   }
 
-  function matches(t, q) {
+  function matches(n, q) {
     if (!q) return true;
     q = q.toLowerCase();
-    if (t.title.toLowerCase().includes(q)) return true;
-    if ((t.note || '').toLowerCase().includes(q)) return true;
-    if (t.tags.some((tag) => tag.name.toLowerCase().includes(q))) return true;
-    if (t.items.some((i) => i.text.toLowerCase().includes(q))) return true;
-    return false;
+    return n.title.toLowerCase().includes(q)
+      || (n.note || '').toLowerCase().includes(q)
+      || n.tags.some((t) => t.name.toLowerCase().includes(q))
+      || n.items.some((i) => i.text.toLowerCase().includes(q));
   }
+
+  function fmtDate(ms) {
+    const d = new Date(ms);
+    const p = (x) => String(x).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>';
 
   // ---------- status ticker ----------
   function ticker() {
     const el = document.getElementById('ticker');
     if (!el) return;
-    let done = 0, total = 0, tags = new Set();
-    for (const t of tallies) {
-      const s = itemStats(t);
+    let done = 0, total = 0;
+    const tags = new Set();
+    for (const n of notches) {
+      const s = itemStats(n);
       done += s.done; total += s.total;
-      for (const g of t.tags) tags.add(g.name);
+      for (const g of n.tags) tags.add(g.name);
     }
     el.innerHTML =
-      `<span class="stat">TALLIES <b>${tallies.length}</b></span>` +
+      `<span class="stat">NOTCHES <b>${notches.length}</b></span>` +
       `<span class="stat">ITEMS <b class="up">${done}</b>/<b>${total}</b></span>` +
       `<span class="stat">TAGS <b>${tags.size}</b></span>`;
+  }
+
+  // ---------- cards ----------
+  function cardHTML(n) {
+    const s = itemStats(n);
+    const kids = childrenOf(n.id).length;
+    const bits = [];
+    if (kids) bits.push(`<span class="num">${kids}</span> sub-notch${kids === 1 ? '' : 'es'}`);
+    if (s.total) bits.push(`<span class="num">${s.done}/${s.total}</span> done`);
+    if (n.note) bits.push('note');
+    const meta = bits.length ? bits.join(' · ') : 'empty';
+    const tags = n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
+    return `
+      <a class="card notch-card" href="#/n/${esc(n.id)}">
+        <div class="title">${n.title ? esc(n.title) : '<span class="untitled">untitled</span>'}</div>
+        ${tags ? `<div class="row" style="margin-top:8px">${tags}</div>` : ''}
+        <div class="meta">${meta} · updated ${fmtDate(n.updatedAt)}</div>
+      </a>`;
   }
 
   // ---------- list view ----------
   function renderList() {
     view().innerHTML = `
-      <p class="lede">Your tallies — a container for anything. Make one, then attach notes, checklist items, and tags.</p>
+      <p class="lede">Your notches — a mark for anything. Make one, then attach notes, checklist items, tags, and sub-notches.</p>
       <section class="section">
-        <h2><span>New tally</span></h2>
+        <h2><span>New notch</span></h2>
         <div class="section-body">
           <form class="row" id="new-form" autocomplete="off">
             <input class="input" id="new-title" type="text" placeholder="e.g. Kitchen renovation, Groceries, Trip to Lisbon" style="flex:1 1 12rem"/>
-            <button class="btn primary" type="submit">Add tally</button>
+            <button class="btn primary" type="submit">Add notch</button>
           </form>
         </div>
       </section>
       <section class="section">
-        <h2><span>Tallies</span></h2>
+        <h2><span>Notches</span></h2>
         <div class="section-body stack">
           <label class="field"><span>Search</span><input class="input" id="search" type="search" placeholder="Filter by title, note, item, or tag…"/></label>
-          <div id="tally-list" class="stack"></div>
+          <div id="notch-list" class="stack"></div>
         </div>
       </section>`;
     renderCards('');
@@ -148,40 +222,28 @@
   }
 
   function renderCards(q) {
-    const list = document.getElementById('tally-list');
+    const list = document.getElementById('notch-list');
     if (!list) return;
-    const rows = sortedTallies().filter((t) => matches(t, q));
+    const rows = topLevel().filter((n) => matches(n, q));
     if (rows.length === 0) {
-      list.innerHTML = `<p class="swatch-note">${tallies.length === 0 ? 'No tallies yet — add one above.' : 'Nothing matches that search.'}</p>`;
+      list.innerHTML = `<p class="swatch-note">${topLevel().length === 0 ? 'No notches yet — add one above.' : 'Nothing matches that search.'}</p>`;
       return;
     }
     list.innerHTML = rows.map(cardHTML).join('');
   }
 
-  function cardHTML(t) {
-    const s = itemStats(t);
-    const bits = [];
-    if (s.total) bits.push(`<span class="num">${s.done}/${s.total}</span> done`);
-    if (t.note) bits.push('note');
-    const meta = bits.length ? bits.join(' · ') : 'empty';
-    const tags = t.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
-    return `
-      <a class="card tally-card" href="#/t/${esc(t.id)}">
-        <div class="title">${esc(t.title) || '<span class="untitled">untitled</span>'}</div>
-        ${tags ? `<div class="row" style="margin-top:8px">${tags}</div>` : ''}
-        <div class="meta">${meta} · updated ${fmtDate(t.updatedAt)}</div>
-      </a>`;
-  }
-
-  function fmtDate(ms) {
-    const d = new Date(ms);
-    const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-  }
-
   // ---------- detail view ----------
-  function renderDetail(t) {
-    const items = t.items.map((i) => `
+  function renderDetail(n) {
+    const crumbs = [`<a href="#/" class="back">all notches</a>`]
+      .concat(trail(n).map((a) => `<a href="#/n/${esc(a.id)}" class="back">${esc(a.title) || 'untitled'}</a>`))
+      .join('<span class="crumb-sep"> / </span>');
+
+    const kids = childrenOf(n.id);
+    const subCards = kids.length
+      ? kids.map(cardHTML).join('')
+      : '<span class="swatch-note">No sub-notches.</span>';
+
+    const items = n.items.map((i) => `
       <label class="check strike" data-item="${esc(i.id)}">
         <input type="checkbox" ${i.done ? 'checked' : ''}/>
         <span class="box">${CHECK_SVG}</span>
@@ -189,17 +251,28 @@
         <button class="x" type="button" data-del-item="${esc(i.id)}" aria-label="remove item">&times;</button>
       </label>`).join('');
 
-    const tags = t.tags.map((g) => `
+    const tags = n.tags.map((g) => `
       <span class="chip tag-chip"><span class="lab ${esc(g.color)}">${esc(g.name)}</span>
         <button class="x" type="button" data-del-tag="${esc(g.name)}" aria-label="remove tag">&times;</button></span>`).join('');
 
     view().innerHTML = `
-      <p class="lede"><a href="#/" class="back">← all tallies</a></p>
+      <p class="lede">← ${crumbs}</p>
 
       <section class="section">
-        <h2><span>Tally</span><button class="btn danger sm" id="delete" type="button">Delete</button></h2>
+        <h2><span>Notch</span><button class="btn danger sm" id="delete" type="button">Delete</button></h2>
         <div class="section-body stack">
-          <label class="field"><span>Title</span><input class="input" id="title" type="text" value="${esc(t.title)}" placeholder="Untitled"/></label>
+          <label class="field"><span>Title</span><input class="input" id="title" type="text" value="${esc(n.title)}" placeholder="Untitled"/></label>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2><span>Sub-notches</span></h2>
+        <div class="section-body stack">
+          <div class="stack" id="subs">${subCards}</div>
+          <form class="row" id="sub-form" autocomplete="off">
+            <input class="input" id="sub-title" type="text" placeholder="add a sub-notch…" style="flex:1 1 12rem"/>
+            <button class="btn ghost sm" type="submit">Add sub-notch</button>
+          </form>
         </div>
       </section>
 
@@ -228,32 +301,30 @@
       <section class="section">
         <h2><span>Note</span></h2>
         <div class="section-body">
-          <textarea class="textarea" id="note" placeholder="Write anything down…">${esc(t.note)}</textarea>
+          <textarea class="textarea" id="note" placeholder="Write anything down…">${esc(n.note)}</textarea>
         </div>
       </section>`;
   }
 
-  const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>';
-
   // ---------- router ----------
   function route() {
-    const m = location.hash.match(/^#\/t\/(.+)$/);
+    const m = location.hash.match(/^#\/n\/(.+)$/);
     if (m) {
-      const t = byId(m[1]);
-      if (t) { renderDetail(t); return; }
-      location.hash = '#/'; // unknown id → back to list
+      const n = byId(m[1]);
+      if (n) { renderDetail(n); return; }
+      location.hash = '#/';
       return;
     }
     renderList();
   }
 
-  // ---------- events (delegated on #view) ----------
-  let noteTimer = null, titleTimer = null;
-
   function currentDetail() {
-    const m = location.hash.match(/^#\/t\/(.+)$/);
+    const m = location.hash.match(/^#\/n\/(.+)$/);
     return m ? byId(m[1]) : null;
   }
+
+  // ---------- events (delegated on #view) ----------
+  let noteTimer = null, titleTimer = null;
 
   function onSubmit(e) {
     const f = e.target;
@@ -262,28 +333,37 @@
       const input = document.getElementById('new-title');
       const title = input.value.trim();
       if (!title) return;
-      createTally(title).then((t) => { location.hash = '#/t/' + t.id; });
+      createNotch(title, null).then((n) => { location.hash = '#/n/' + n.id; });
+      return;
+    }
+    if (f.id === 'sub-form') {
+      e.preventDefault();
+      const parent = currentDetail(); if (!parent) return;
+      const box = document.getElementById('sub-title');
+      const title = box.value.trim();
+      if (!title) return;
+      createNotch(title, parent.id).then(() => renderDetail(parent));
       return;
     }
     if (f.id === 'item-form') {
       e.preventDefault();
-      const t = currentDetail(); if (!t) return;
+      const n = currentDetail(); if (!n) return;
       const box = document.getElementById('item-text');
       const text = box.value.trim();
       if (!text) return;
-      t.items.push({ id: uid('i_'), text, done: false });
-      persist(t).then(() => renderDetail(t));
+      n.items.push({ id: uid('i_'), text, done: false });
+      persist(n).then(() => renderDetail(n));
       return;
     }
     if (f.id === 'tag-form') {
       e.preventDefault();
-      const t = currentDetail(); if (!t) return;
+      const n = currentDetail(); if (!n) return;
       const box = document.getElementById('tag-name');
       const name = box.value.trim();
       if (!name) return;
-      if (!t.tags.some((g) => g.name.toLowerCase() === name.toLowerCase())) {
-        t.tags.push({ name, color: PALETTE[t.tags.length % PALETTE.length] });
-        persist(t).then(() => renderDetail(t));
+      if (!n.tags.some((g) => g.name.toLowerCase() === name.toLowerCase())) {
+        n.tags.push({ name, color: PALETTE[n.tags.length % PALETTE.length] });
+        persist(n).then(() => renderDetail(n));
       } else {
         box.value = '';
       }
@@ -292,31 +372,35 @@
   }
 
   function onClick(e) {
-    const back = e.target.closest('.back');
-    if (back) return; // hash link handles it
+    if (e.target.closest('.back')) return; // hash links navigate themselves
 
     const delItem = e.target.closest('[data-del-item]');
     if (delItem) {
       e.preventDefault();
-      const t = currentDetail(); if (!t) return;
+      const n = currentDetail(); if (!n) return;
       const id = delItem.getAttribute('data-del-item');
-      t.items = t.items.filter((i) => i.id !== id);
-      persist(t).then(() => renderDetail(t));
+      n.items = n.items.filter((i) => i.id !== id);
+      persist(n).then(() => renderDetail(n));
       return;
     }
     const delTag = e.target.closest('[data-del-tag]');
     if (delTag) {
       e.preventDefault();
-      const t = currentDetail(); if (!t) return;
+      const n = currentDetail(); if (!n) return;
       const name = delTag.getAttribute('data-del-tag');
-      t.tags = t.tags.filter((g) => g.name !== name);
-      persist(t).then(() => renderDetail(t));
+      n.tags = n.tags.filter((g) => g.name !== name);
+      persist(n).then(() => renderDetail(n));
       return;
     }
     if (e.target.id === 'delete') {
-      const t = currentDetail(); if (!t) return;
-      if (confirm('Delete this tally? This cannot be undone.')) {
-        removeTally(t).then(() => { location.hash = '#/'; });
+      const n = currentDetail(); if (!n) return;
+      const count = subtree(n).length - 1;
+      const msg = count
+        ? `Delete this notch and its ${count} sub-notch${count === 1 ? '' : 'es'}? This cannot be undone.`
+        : 'Delete this notch? This cannot be undone.';
+      if (confirm(msg)) {
+        const parentId = n.parentId;
+        removeNotch(n).then(() => { location.hash = parentId ? '#/n/' + parentId : '#/'; });
       }
       return;
     }
@@ -325,11 +409,10 @@
   function onChange(e) {
     const item = e.target.closest('[data-item]');
     if (item && e.target.matches('input[type=checkbox]')) {
-      const t = currentDetail(); if (!t) return;
+      const n = currentDetail(); if (!n) return;
       const id = item.getAttribute('data-item');
-      const i = t.items.find((x) => x.id === id);
-      if (i) { i.done = e.target.checked; persist(t); }
-      return;
+      const i = n.items.find((x) => x.id === id);
+      if (i) { i.done = e.target.checked; persist(n); }
     }
   }
 
@@ -339,15 +422,15 @@
       return;
     }
     if (e.target.id === 'note') {
-      const t = currentDetail(); if (!t) return;
+      const n = currentDetail(); if (!n) return;
       clearTimeout(noteTimer);
-      noteTimer = setTimeout(() => { t.note = e.target.value; persist(t); }, 350);
+      noteTimer = setTimeout(() => { n.note = e.target.value; persist(n); }, 350);
       return;
     }
     if (e.target.id === 'title') {
-      const t = currentDetail(); if (!t) return;
+      const n = currentDetail(); if (!n) return;
       clearTimeout(titleTimer);
-      titleTimer = setTimeout(() => { t.title = e.target.value.trim(); persist(t); }, 350);
+      titleTimer = setTimeout(() => { n.title = e.target.value.trim(); persist(n); }, 350);
       return;
     }
   }
