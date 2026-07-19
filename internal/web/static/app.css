@@ -35,16 +35,15 @@
 
   /* ================= THEME CONTRACT ==================================
      A theme fills exactly the slots below. `:root` carries the default
-     (Amber CRT) so the app is fully themed even with no data-theme
-     attribute set; the identical block is also tagged
-     [data-theme="amber-crt"] so a theme switcher can select it by name.
+     (Paper) so the app is fully themed even with no data-theme attribute
+     set; the identical block is also tagged [data-theme="paper"] so a
+     theme switcher can select it by name.
 
      To add a theme: copy this whole block, change the selector to
      [data-theme="your-name"], set color-scheme (dark|light), and refill
      every slot. Set colours nowhere else — components read only tokens.
      For a calm/flat theme, dial the FX budget toward 0/none.
      ================================================================== */
-  :root,
   [data-theme="amber-crt"]{
     color-scheme: dark;
 
@@ -164,12 +163,14 @@
     --beam-opacity: 0;
   }
 
-  /* ---- Paper / Almanac — warm light -------------------------------------
+  /* ---- Paper / Almanac — warm light (default theme) ---------------------
      tally's first light theme: an old almanac page. Aged cream paper, dark
      sepia ink, a red-letter accent, and a faint ruled grid instead of CRT
      grunge. The FX budget is off except that hairline grid. The command-line
      bar becomes a sunken paper field (--terminal-bg light) and tag-chip text
-     darkens (--lab-ink dark) so both read on paper. */
+     darkens (--lab-ink dark) so both read on paper. Carried by `:root` as
+     tally's default. */
+  :root,
   [data-theme="paper"]{
     color-scheme: light;
 
