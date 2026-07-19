@@ -8,13 +8,18 @@ it with a new ADR rather than editing the old one.
 |-----|----------|--------|
 | [0001](0001-language-and-stack.md) | Language & stack — Go + templ + HTMX | Accepted |
 | [0002](0002-datastore.md) | Datastore — SQLite | Accepted |
-| 0003 | Auth model & access domain | **Deferred** — see [#3](https://github.com/clarkbar-sys/tally/issues/3) |
+| [0003](0003-tailnet-integration.md) | Tailnet integration — embed tsnet | Accepted |
+| — | Auth model & access domain | **Deferred** — see [#3](https://github.com/clarkbar-sys/tally/issues/3) |
 
 ## Deferred: auth (#3)
 
-Auth is parked, not decided. It blocks *deploy* (#16), not the early build, so
-it resolves later. The epic's hard constraint stands regardless of which option
-wins: tally must **never share an access domain** with the family-shareable
-surface. The answer to "a family invitee hits `tally.taileafxyz.net`" must be
-*"denied by a different authz system"* — not a role check inside a shared one.
-Nothing built before 0003 lands may assume shared auth.
+App-level auth is parked, not decided — it will get its own ADR when taken up.
+The epic's hard constraint stands regardless of which option wins: tally must
+**never share an access domain** with the family-shareable surface. The answer
+to "a family invitee hits `tally.taileafxyz.net`" must be *"denied by a different
+authz system"* — not a role check inside a shared one.
+
+ADR-0003 already delivers the *interim* answer: tally is its own tagged tailnet
+node, so the **tailnet ACL** (a different authz system) is the boundary today.
+Full app-level auth still lands with #3. Nothing built before then may assume
+shared auth.

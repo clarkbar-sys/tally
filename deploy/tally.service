@@ -1,0 +1,44 @@
+# tally — personal ledger, served on the tailnet via tsnet.
+# Installed by deploy/install.sh. See deploy/README.md.
+
+[Unit]
+Description=tally personal ledger
+Documentation=https://github.com/clarkbar-sys/tally
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tally
+Group=tally
+ExecStart=/usr/local/bin/tally
+Restart=on-failure
+RestartSec=5s
+
+# Tailscale auth key delivered as a systemd credential — never in the
+# environment or the repo (see docs/security/secrets.md). Create the source
+# file at /etc/tally/ts-authkey (root:tally 0640); see deploy/README.md.
+LoadCredential=ts-authkey:/etc/tally/ts-authkey
+
+# tsnet node state (keys) lives under /var/lib/tally, created and owned by the
+# service user via StateDirectory.
+StateDirectory=tally
+StateDirectoryMode=0700
+Environment=TALLY_HOSTNAME=tally
+Environment=TALLY_STATE_DIR=/var/lib/tally/tsnet
+
+# Hardening. tsnet is userspace (no TUN, no NET_ADMIN), so this can stay tight.
+# Further tightening (SystemCallFilter, MemoryDenyWriteExecute) is deliberately
+# left off until validated on the box — see deploy/README.md.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
