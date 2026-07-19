@@ -49,16 +49,17 @@ stale, so commit the regenerated output alongside the template change.
 
 ## GitHub Pages (preview)
 
-[`.github/workflows/pages.yml`](.github/workflows/pages.yml) builds the real
-UI as a static site — `go run ./cmd/tally -export`, rendered from the demo
-adapter (synthetic data, no credentials, no network) — and deploys it to the
-`gh-pages` branch: production at the branch root on push to `main`, and a
-preview under `pr-<number>/` for every same-repo pull request, with a sticky
-comment linking to it. The preview is the actual server-rendered app, so it
-can't drift from what ships.
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) publishes the
+design spike(s) under [`design/`](design/) as the site. tally's v1 is
+local-first and client-only (see the pivot in epic #1), so the public site
+_is_ the click-through prototype — there's no server build to deploy. The
+primary spike (`design/tally-spike.html`) is served as `index.html`, and it
+deploys to the `gh-pages` branch: production at the branch root on push to
+`main`, and a preview under `pr-<number>/` for every same-repo pull request,
+with a sticky comment linking to it.
 
-Reproduce a preview locally with `go run ./cmd/tally -export ./_site` and open
-`_site/index.html`.
+Reproduce a preview locally by just opening `design/tally-spike.html` in a
+browser — it's a single self-contained file, no build step.
 
 **One-time repo setting**, required for this to work: **Settings → Pages →
 Build and deployment → Source** must be **"Deploy from a branch"**, branch

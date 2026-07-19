@@ -1,14 +1,13 @@
 name: pages
 
-# Builds the real, server-rendered UI as a static site (cmd/tally -export,
-# driven by the demo adapter -- no credentials, no network) and deploys it to
-# the gh-pages branch: production at the branch root on push to main, and a
-# per-PR preview under pr-<number>/ for same-repo pull requests. The preview is
-# the actual app, not a hand-maintained mockup, so it can never drift from what
-# ships. Anything under design/ (throwaway click-through spikes) is copied in
-# alongside it and linked from the PR comment separately, so a spike is
-# viewable on a phone without touching the app build. Requires a one-time repo
-# setting change -- see CONTRIBUTING.md's "GitHub Pages" section.
+# Publishes the design spike(s) under design/ as the site itself. tally's v1 is
+# local-first and client-only (see epic #1's pivot), so the public site IS the
+# click-through prototype -- there's no server build to deploy. The primary
+# spike (design/tally-spike.html) is served as the site's index.html; every
+# file under design/ is also published by its own name. Deployed to the
+# gh-pages branch: production at the branch root on push to main, and a per-PR
+# preview under pr-<number>/ for same-repo pull requests. Requires a one-time
+# repo setting change -- see CONTRIBUTING.md's "GitHub Pages" section.
 
 on:
   push:
@@ -22,9 +21,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Production: build the UI and publish it to the gh-pages branch root on push
-  # to main. exclude_assets protects live pr-*/ preview folders from being swept
-  # by the same-repo cleanup this job otherwise does for removed root files.
+  # Production: publish the spike to the gh-pages branch root on push to main.
+  # exclude_assets protects live pr-*/ preview folders from being swept by the
+  # same-repo cleanup this job otherwise does for removed root files.
   deploy-production:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -32,14 +31,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: build static site
-        run: go run ./cmd/tally -export ./_site
-      - name: include design spikes
-        run: '[ -d design ] && cp -r design ./_site/design || true'
+      - name: assemble site from design spikes
+        run: |
+          mkdir -p ./_site
+          cp design/*.html ./_site/
+          cp design/tally-spike.html ./_site/index.html
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -47,7 +43,7 @@ jobs:
           keep_files: false
           exclude_assets: "pr-*"
 
-  # Preview: same-repo PRs get the built UI published under pr-<number>/, with a
+  # Preview: same-repo PRs get the spike published under pr-<number>/, with a
   # sticky comment linking to it. Forked PRs are skipped -- their GITHUB_TOKEN is
   # read-only and can't push to gh-pages.
   deploy-preview:
@@ -61,36 +57,11 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: build static site
-        run: go run ./cmd/tally -export ./_site
-      - name: include design spikes
-        run: '[ -d design ] && cp -r design ./_site/design || true'
-      - name: list design spikes
-        id: spikes
+      - name: assemble site from design spikes
         run: |
-          base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/design"
-          block=""
-          if [ -d design ]; then
-            for f in design/*.html; do
-              [ -e "$f" ] || continue
-              block="$(printf '%s- [%s](%s/%s)\n' "$block" "$(basename "$f")" "$base" "$(basename "$f")")"
-            done
-          fi
-          # GitHub Actions expressions don't interpret \n in string literals, so
-          # any leading blank line before "Design spikes:" has to be a real
-          # newline built here in bash, not in the message: template below.
-          if [ -n "$block" ]; then
-            block="$(printf 'Design spikes:\n%s' "$block")"
-          fi
-          {
-            echo 'links<<SPIKES_EOF'
-            printf '%s\n' "$block"
-            echo 'SPIKES_EOF'
-          } >> "$GITHUB_OUTPUT"
+          mkdir -p ./_site
+          cp design/*.html ./_site/
+          cp design/tally-spike.html ./_site/index.html
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -101,9 +72,7 @@ jobs:
         with:
           header: pages-preview
           message: |
-            Preview (real UI, demo data): https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
-
-            ${{ steps.spikes.outputs.links }}
+            Live preview (the tally spike): https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
 
   # Cleanup: remove a PR's preview folder from gh-pages once it closes, so stale
   # previews don't accumulate.
