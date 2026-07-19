@@ -50,7 +50,7 @@ func AppPage() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</span></header><div class=\"cmdline\" aria-hidden=\"true\"><span class=\"prompt\">tally&gt;</span> <span class=\"cmd\">TAL</span> <span class=\"go\">GO</span> <span class=\"caret\"></span></div><div class=\"ticker\" id=\"ticker\" role=\"status\" aria-label=\"status\"><span class=\"stat\">TALLIES <b>0</b></span></div><main id=\"view\" aria-live=\"polite\"></main><noscript><p class=\"lede\" style=\"padding:var(--sp-4)\">tally is a local-first app — it needs JavaScript enabled to run. Your data stays in this browser.</p></noscript><footer class=\"foot\">tally — local-first · data stays in your browser</footer></div></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</span></header><div class=\"cmdline\" aria-hidden=\"true\"><span class=\"prompt\">tally&gt;</span> <span class=\"cmd\">NCH</span> <span class=\"go\">GO</span> <span class=\"caret\"></span></div><div class=\"ticker\" id=\"ticker\" role=\"status\" aria-label=\"status\"><span class=\"stat\">NOTCHES <b>0</b></span></div><main id=\"view\" aria-live=\"polite\"></main><noscript><p class=\"lede\" style=\"padding:var(--sp-4)\">tally is a local-first app — it needs JavaScript enabled to run. Your data stays in this browser.</p></noscript><footer class=\"foot\">tally — local-first · data stays in your browser</footer></div></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
