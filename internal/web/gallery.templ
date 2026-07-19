@@ -5,9 +5,8 @@ package web
 // Page is tally's hello-world shell: the Amber CRT terminal theme plus a
 // gallery of the styled widgets (buttons, checkboxes, radios, toggles, fields,
 // chips, labels, cards, tally-marks), framed with a Bloomberg-style command
-// line, status ticker, and function-key bar. No data layer yet — this is the
-// design sandbox while the model is still in flux. The running version shows
-// top-right.
+// line and status ticker. No data layer yet — this is the design sandbox while
+// the model is still in flux. The running version shows top-right.
 templ Page() {
 	<!doctype html>
 	<html lang="en">
@@ -171,16 +170,6 @@ templ Page() {
 						</div>
 					</section>
 				</main>
-				<nav class="fkeys" aria-label="function keys">
-					<button class="fkey" type="button"><b>F1</b>Help</button>
-					<button class="fkey" type="button"><b>F2</b>Tallies</button>
-					<button class="fkey" type="button"><b>F3</b>New</button>
-					<button class="fkey" type="button"><b>F4</b>Labels</button>
-					<button class="fkey" type="button"><b>F5</b>Done</button>
-					<button class="fkey" type="button"><b>F6</b>Search</button>
-					<button class="fkey" type="button"><b>F7</b>Settings</button>
-					<button class="fkey" type="button"><b>F8</b>Quit</button>
-				</nav>
 				<footer class="foot">tally — Amber CRT · design sandbox</footer>
 			</div>
 		</body>

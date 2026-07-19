@@ -13,9 +13,8 @@ import templruntime "github.com/a-h/templ/runtime"
 // Page is tally's hello-world shell: the Amber CRT terminal theme plus a
 // gallery of the styled widgets (buttons, checkboxes, radios, toggles, fields,
 // chips, labels, cards, tally-marks), framed with a Bloomberg-style command
-// line, status ticker, and function-key bar. No data layer yet — this is the
-// design sandbox while the model is still in flux. The running version shows
-// top-right.
+// line and status ticker. No data layer yet — this is the design sandbox while
+// the model is still in flux. The running version shows top-right.
 func Page() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -44,7 +43,7 @@ func Page() templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(versionString())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 31, Col: 110}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 30, Col: 110}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -94,7 +93,7 @@ func Page() templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(markCount(i))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 167, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 166, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -105,7 +104,7 @@ func Page() templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div></div></section></main><nav class=\"fkeys\" aria-label=\"function keys\"><button class=\"fkey\" type=\"button\"><b>F1</b>Help</button> <button class=\"fkey\" type=\"button\"><b>F2</b>Tallies</button> <button class=\"fkey\" type=\"button\"><b>F3</b>New</button> <button class=\"fkey\" type=\"button\"><b>F4</b>Labels</button> <button class=\"fkey\" type=\"button\"><b>F5</b>Done</button> <button class=\"fkey\" type=\"button\"><b>F6</b>Search</button> <button class=\"fkey\" type=\"button\"><b>F7</b>Settings</button> <button class=\"fkey\" type=\"button\"><b>F8</b>Quit</button></nav><footer class=\"foot\">tally — Amber CRT · design sandbox</footer></div></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div></div></section></main><footer class=\"foot\">tally — Amber CRT · design sandbox</footer></div></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
