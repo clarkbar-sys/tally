@@ -3,6 +3,7 @@ module github.com/clarkbar-sys/tally
 go 1.26.4
 
 require (
+	github.com/a-h/templ v0.3.977
 	modernc.org/sqlite v1.54.0
 	tailscale.com v1.100.0
 )

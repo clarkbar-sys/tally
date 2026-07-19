@@ -34,21 +34,31 @@ bar.
 ## Handy targets
 
 ```sh
+make generate   # regenerate *_templ.go after editing any .templ file
 make fmt        # gofmt -w .
 make vet
 make test
 make build
 make gitleaks
-make ci         # everything CI runs, locally
+make ci         # everything CI runs, locally (incl. templ-generate freshness)
 ```
 
-## GitHub Pages (site/)
+The UI is written in [templ](https://templ.guide/): edit `.templ` files, then
+`make generate` to refresh the committed `*_templ.go`. CI fails if they are
+stale, so commit the regenerated output alongside the template change.
 
-[`.github/workflows/pages.yml`](.github/workflows/pages.yml) deploys the
-static demo mockup under `site/` to the `gh-pages` branch: production at the
-branch root on push to `main`, and a preview under `pr-<number>/` on every
-same-repo pull request that touches `site/`, with a sticky comment linking
-to it.
+## GitHub Pages (preview)
+
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) builds the real
+UI as a static site — `go run ./cmd/tally -export`, rendered from the demo
+adapter (synthetic data, no credentials, no network) — and deploys it to the
+`gh-pages` branch: production at the branch root on push to `main`, and a
+preview under `pr-<number>/` for every same-repo pull request, with a sticky
+comment linking to it. The preview is the actual server-rendered app, so it
+can't drift from what ships.
+
+Reproduce a preview locally with `go run ./cmd/tally -export ./_site` and open
+`_site/index.html`.
 
 **One-time repo setting**, required for this to work: **Settings → Pages →
 Build and deployment → Source** must be **"Deploy from a branch"**, branch
