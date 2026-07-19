@@ -1,12 +1,11 @@
 name: pages
 
 # Publishes the tally UI as the site. The Go app renders itself to a static
-# site (go run ./cmd/tally -export), which becomes index.html + static/; the
-# earlier click-through spike under design/ is published alongside by its own
-# name (design/tally-spike.html -> /tally-spike.html). Deployed to the gh-pages
-# branch: production at the branch root on push to main, and a per-PR preview
-# under pr-<number>/ for same-repo pull requests. Requires a one-time repo
-# setting change -- see CONTRIBUTING.md's "GitHub Pages" section.
+# site (go run ./cmd/tally -export), which becomes index.html + static/ -- the
+# first and only page. Deployed to the gh-pages branch: production at the branch
+# root on push to main, and a per-PR preview under pr-<number>/ for same-repo
+# pull requests. Requires a one-time repo setting change -- see CONTRIBUTING.md's
+# "GitHub Pages" section.
 
 on:
   push:
@@ -20,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Production: publish the spike to the gh-pages branch root on push to main.
+  # Production: publish the app to the gh-pages branch root on push to main.
   # exclude_assets protects live pr-*/ preview folders from being swept by the
   # same-repo cleanup this job otherwise does for removed root files.
   deploy-production:
@@ -33,10 +32,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: assemble site (render the app, keep the spike alongside)
-        run: |
-          go run ./cmd/tally -export ./_site
-          cp design/*.html ./_site/
+      - name: assemble site (render the app to index.html)
+        run: go run ./cmd/tally -export ./_site
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -44,7 +41,7 @@ jobs:
           keep_files: false
           exclude_assets: "pr-*"
 
-  # Preview: same-repo PRs get the spike published under pr-<number>/, with a
+  # Preview: same-repo PRs get the app published under pr-<number>/, with a
   # sticky comment linking to it. Forked PRs are skipped -- their GITHUB_TOKEN is
   # read-only and can't push to gh-pages.
   deploy-preview:
@@ -61,10 +58,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: assemble site (render the app, keep the spike alongside)
-        run: |
-          go run ./cmd/tally -export ./_site
-          cp design/*.html ./_site/
+      - name: assemble site (render the app to index.html)
+        run: go run ./cmd/tally -export ./_site
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -75,9 +70,7 @@ jobs:
         with:
           header: pages-preview
           message: |
-            Live preview (the app): https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
-
-            The earlier tally-organizer spike is published alongside at [`/tally-spike.html`](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/tally-spike.html).
+            Live preview: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
 
   # Cleanup: remove a PR's preview folder from gh-pages once it closes, so stale
   # previews don't accumulate.
