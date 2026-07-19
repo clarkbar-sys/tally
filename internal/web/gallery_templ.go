@@ -36,14 +36,14 @@ func GalleryPage() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"dark\"><meta name=\"theme-color\" content=\"#100F0D\"><title>tally — design</title><meta name=\"description\" content=\"tally — Amber CRT terminal theme + widget gallery.\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"static/favicon.svg\"><link rel=\"stylesheet\" href=\"static/app.css\"></head><body><div class=\"crt-beam\" aria-hidden=\"true\"></div><div class=\"app\"><header class=\"topbar\"><div class=\"brand\"><span class=\"tally-mark\" aria-hidden=\"true\"><span></span><span></span><span></span><span></span><span class=\"slash\"></span></span> tally</div><span class=\"version\" title=\"running build\"><span class=\"dot\" aria-hidden=\"true\"></span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"dark\"><meta name=\"theme-color\" content=\"#100F0D\"><title>tally — design</title><meta name=\"description\" content=\"tally — Amber CRT terminal theme + widget gallery.\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"static/favicon.svg\"><link rel=\"stylesheet\" href=\"static/app.css\"></head><body><div class=\"crt-beam\" aria-hidden=\"true\"></div><div class=\"app\"><header class=\"topbar\"><div class=\"brand\">tally</div><span class=\"version\" title=\"running build\"><span class=\"dot\" aria-hidden=\"true\"></span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(versionString())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 31, Col: 110}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 28, Col: 110}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -93,7 +93,7 @@ func GalleryPage() templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(markCount(i))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 161, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 158, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {

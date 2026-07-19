@@ -350,11 +350,6 @@
     0%{ transform: translateY(0); }
     100%{ transform: translateY(134vh); }
   }
-  /* tally-mark phosphor pulse — a gentle glow wobble, no hard blink */
-  @keyframes flicker{
-    0%, 100%{ filter: drop-shadow(0 0 6px var(--accent-glow-hot)); }
-    50%{ filter: drop-shadow(0 0 3px var(--accent-glow)); }
-  }
   @keyframes pulseGlow{
     0%, 100%{ box-shadow: 0 0 0 0 var(--flash-glow), 0 4px 16px -6px var(--accent-glow); }
     50%{ box-shadow: 0 0 18px 1px var(--flash-glow), 0 6px 22px -4px var(--accent-glow-hot); }
@@ -391,10 +386,12 @@
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
   }
-  .brand{ display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: .01em; color: var(--ink); text-decoration: none; text-shadow: 0 0 14px var(--accent-glow); }
-  .tally-mark{ display: inline-flex; align-items: flex-end; gap: 3px; height: 20px; color: var(--accent); filter: drop-shadow(0 0 6px var(--accent-glow)); animation: flicker 6s ease-in-out infinite; }
-  .tally-mark span{ width: 3px; height: 18px; background: currentColor; border-radius: 1px; display: block; }
-  .tally-mark span.slash{ width: 20px; height: 3px; align-self: center; margin-left: -20px; transform: rotate(-38deg); border-radius: 1px; }
+  .brand{
+    font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: .01em;
+    color: var(--ink); text-shadow: 0 0 14px var(--accent-glow);
+    text-decoration-line: underline; text-decoration-color: var(--accent);
+    text-decoration-thickness: 2px; text-underline-offset: 7px; text-decoration-skip-ink: none;
+  }
   .version{
     display: inline-flex; align-items: center; gap: 7px;
     border: 1px solid var(--line-strong); border-radius: var(--r-sm);

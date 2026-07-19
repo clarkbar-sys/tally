@@ -48,7 +48,7 @@ func TestDesignRendersGallery(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"tally-mark", `class="check`, "Buttons", "Tally-marks"} {
+	for _, want := range []string{"mark-cell", `class="check`, "Buttons", "Tally-marks"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("gallery missing %q", want)
 		}
