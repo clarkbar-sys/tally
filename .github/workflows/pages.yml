@@ -1,46 +1,98 @@
 name: pages
 
+# Deploys site/ to the gh-pages branch: production at the branch root on
+# push to main, and a per-PR preview under pr-<number>/ for same-repo pull
+# requests. Requires a one-time repo setting change -- see CONTRIBUTING.md's
+# "GitHub Pages (site/)" section.
+
 on:
   push:
     branches: [main]
     paths:
       - "site/**"
       - ".github/workflows/pages.yml"
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build:
+  # Production: site/ on push to main -> gh-pages branch root. exclude_assets
+  # protects live pr-*/ preview folders from being swept by the same-repo
+  # cleanup this job otherwise does for removed root files.
+  deploy-production:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
+      - uses: actions/checkout@v4
+      - uses: peaceiris/actions-gh-pages@v4
         with:
-          enablement: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          keep_files: false
+          exclude_assets: "pr-*"
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-  deploy:
-    needs: build
+  # Preview: same-repo PRs get site/ published under pr-<number>/, with a
+  # sticky comment linking to it. Forked PRs are skipped -- their
+  # GITHUB_TOKEN is read-only and can't push to gh-pages.
+  deploy-preview:
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v4
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          destination_dir: pr-${{ github.event.pull_request.number }}
+          keep_files: true
+      - uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pages-preview
+          message: |
+            Preview: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
+
+  # Cleanup: remove a PR's preview folder from gh-pages once it closes, so
+  # stale previews don't accumulate. Only fires if the closing push still
+  # matches the paths filter above -- a PR that touched site/ earlier but not
+  # in its last commit won't trigger this; the orphaned folder is harmless
+  # (a few KB of static HTML) and gets swept up if the same PR number is ever
+  # reused, which GitHub never does.
+  cleanup-preview:
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+      - run: |
+          rm -rf "pr-${{ github.event.pull_request.number }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "pages: remove preview for closed PR #${{ github.event.pull_request.number }}"
+          git push
+      - uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pages-preview
+          delete: true
