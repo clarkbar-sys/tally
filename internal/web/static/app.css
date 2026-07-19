@@ -605,6 +605,74 @@
   /* a count/aside on the right of a section header (e.g. "3 of 7") */
   .section > h2 .count{ color: var(--ink); font-weight: 600; }
 
+  /* ---------- notch detail: title + description ----------
+     The detail view edits a notch the way GitHub edits an issue: a prominent
+     title, a Markdown description with a Write/Preview toggle, and a comment
+     thread. */
+  .title-input{ font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+
+  /* The Write/Preview toggle reuses the segmented control; give it room to sit
+     left-aligned above the editor. */
+  #body-tabs{ align-self: flex-start; }
+
+  /* The raw-Markdown editor is roomier than a plain note field. */
+  .md-input{ min-height: 160px; font-family: var(--font-mono); font-size: 13px; line-height: 1.5; }
+
+  /* ---------- rendered Markdown ----------
+     One shared surface for a rendered description and every rendered comment.
+     Spacing is tuned so stacked blocks breathe without the first/last one
+     adding stray padding inside its container. */
+  .md-body{ color: var(--ink); font-size: 13.5px; line-height: 1.6; word-wrap: break-word; overflow-wrap: anywhere; }
+  .md-body.empty{ font-size: 13px; }
+  .md-body > :first-child{ margin-top: 0; }
+  .md-body > :last-child{ margin-bottom: 0; }
+  .md-body p{ margin: 0 0 var(--sp-3); }
+  .md-body .md-h{ font-family: var(--font-display); font-weight: 700; line-height: 1.3; margin: var(--sp-4) 0 var(--sp-2); }
+  .md-body .md-h1{ font-size: 20px; }
+  .md-body .md-h2{ font-size: 18px; }
+  .md-body .md-h3{ font-size: 16px; }
+  .md-body .md-h4, .md-body .md-h5, .md-body .md-h6{ font-size: 14px; color: var(--ink-dim); }
+  .md-body .md-list{ margin: 0 0 var(--sp-3); padding-left: 1.4em; display: flex; flex-direction: column; gap: 4px; }
+  .md-body .md-list.md-ol{ list-style: decimal; }
+  .md-body .md-list li{ line-height: 1.55; }
+  /* Task-list items drop the bullet and hug the checkbox component. */
+  .md-body li.md-task{ list-style: none; margin-left: -1.4em; }
+  .md-body .md-check{ align-items: flex-start; gap: 9px; }
+  .md-body .md-check .box{ width: 18px; height: 18px; margin-top: 1px; }
+  .md-body .md-check .lbl{ line-height: 1.5; }
+  .md-body code{
+    font-family: var(--font-mono); font-size: .88em;
+    background: var(--bg-raised-2); border: 1px solid var(--line);
+    border-radius: var(--r-sm); padding: 1px 5px;
+  }
+  .md-body pre.md-code{
+    margin: 0 0 var(--sp-3); padding: var(--sp-3); overflow-x: auto;
+    background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--r);
+  }
+  .md-body pre.md-code code{ background: none; border: 0; padding: 0; font-size: 12.5px; line-height: 1.5; }
+  .md-body blockquote.md-quote{
+    margin: 0 0 var(--sp-3); padding: 4px 0 4px var(--sp-3);
+    border-left: 3px solid var(--line-strong); color: var(--ink-dim);
+  }
+  .md-body hr.md-hr{ border: 0; border-top: 1px solid var(--line-strong); margin: var(--sp-4) 0; }
+  .md-body a{ color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+
+  /* ---------- comments: the paper trail ----------
+     A stacked thread of small cards, each stamped with when it was written and
+     removable with the same quiet × the tags/tasks use. */
+  #comments{ gap: var(--sp-3); }
+  .comment{ border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg-raised-2); overflow: hidden; }
+  .comment-head{
+    display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+    padding: 6px 10px 6px 12px; background: var(--bg-raised);
+    border-bottom: 1px solid var(--line); font-size: 11.5px; color: var(--ink-dim);
+  }
+  .comment-when{ font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+  .comment-head .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .55; font-size: 15px; line-height: 1; padding: 0 2px; }
+  .comment-head .x:hover{ opacity: 1; color: var(--danger); }
+  .comment > .md-body{ padding: var(--sp-3) 12px; }
+  #comment-text{ min-height: 84px; }
+
   .back{ text-decoration: none; }
   .back:hover{ text-decoration: underline; }
   .crumb-sep{ color: var(--ink-faint); opacity: .7; }
