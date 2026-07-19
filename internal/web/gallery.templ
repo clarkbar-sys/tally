@@ -2,10 +2,11 @@
 
 package web
 
-// Page is tally's hello-world shell: the Ember Terminal theme plus a gallery of
-// the styled widgets (buttons, checkboxes, radios, toggles, fields, chips,
-// labels, cards, tally-marks). No data layer yet — this is the design sandbox
-// while the model is still in flux. The running version shows top-right.
+// Page is tally's hello-world shell: the Amber CRT terminal theme plus a
+// gallery of the styled widgets (buttons, checkboxes, radios, toggles, fields,
+// chips, labels, cards, tally-marks), framed with a Bloomberg-style command
+// line and status ticker. No data layer yet — this is the design sandbox while
+// the model is still in flux. The running version shows top-right.
 templ Page() {
 	<!doctype html>
 	<html lang="en">
@@ -15,10 +16,11 @@ templ Page() {
 			<meta name="color-scheme" content="dark"/>
 			<meta name="theme-color" content="#100F0D"/>
 			<title>tally — design</title>
-			<meta name="description" content="tally — Ember Terminal theme + widget gallery."/>
+			<meta name="description" content="tally — Amber CRT terminal theme + widget gallery."/>
 			<link rel="stylesheet" href="static/app.css"/>
 		</head>
 		<body>
+			<div class="crt-beam" aria-hidden="true"></div>
 			<div class="app">
 				<header class="topbar">
 					<div class="brand">
@@ -27,6 +29,19 @@ templ Page() {
 					</div>
 					<span class="version" title="running build"><span class="dot" aria-hidden="true"></span>{ versionString() }</span>
 				</header>
+				<div class="cmdline" aria-hidden="true">
+					<span class="prompt">tally&gt;</span>
+					<span class="cmd">DES</span>
+					<span class="go">GO</span>
+					<span class="caret"></span>
+				</div>
+				<div class="ticker" role="status" aria-label="status">
+					<span class="stat">TALLIES <b>12</b></span>
+					<span class="stat">DONE <b class="up">7</b></span>
+					<span class="stat">OPEN <b>5</b></span>
+					<span class="stat">DUE <b class="dn">2</b></span>
+					<span class="stat">STREAK <b>9d</b></span>
+				</div>
 				<main>
 					<p class="lede">Theme + widget sandbox. No data yet — styling lives in <code>static/app.css</code>.</p>
 
@@ -155,7 +170,7 @@ templ Page() {
 						</div>
 					</section>
 				</main>
-				<footer class="foot">tally — Ember Terminal · design sandbox</footer>
+				<footer class="foot">tally — Amber CRT · design sandbox</footer>
 			</div>
 		</body>
 	</html>

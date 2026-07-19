@@ -10,10 +10,11 @@ package web
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-// Page is tally's hello-world shell: the Ember Terminal theme plus a gallery of
-// the styled widgets (buttons, checkboxes, radios, toggles, fields, chips,
-// labels, cards, tally-marks). No data layer yet — this is the design sandbox
-// while the model is still in flux. The running version shows top-right.
+// Page is tally's hello-world shell: the Amber CRT terminal theme plus a
+// gallery of the styled widgets (buttons, checkboxes, radios, toggles, fields,
+// chips, labels, cards, tally-marks), framed with a Bloomberg-style command
+// line and status ticker. No data layer yet — this is the design sandbox while
+// the model is still in flux. The running version shows top-right.
 func Page() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -35,20 +36,20 @@ func Page() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"dark\"><meta name=\"theme-color\" content=\"#100F0D\"><title>tally — design</title><meta name=\"description\" content=\"tally — Ember Terminal theme + widget gallery.\"><link rel=\"stylesheet\" href=\"static/app.css\"></head><body><div class=\"app\"><header class=\"topbar\"><div class=\"brand\"><span class=\"tally-mark\" aria-hidden=\"true\"><span></span><span></span><span></span><span></span><span class=\"slash\"></span></span> tally</div><span class=\"version\" title=\"running build\"><span class=\"dot\" aria-hidden=\"true\"></span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"dark\"><meta name=\"theme-color\" content=\"#100F0D\"><title>tally — design</title><meta name=\"description\" content=\"tally — Amber CRT terminal theme + widget gallery.\"><link rel=\"stylesheet\" href=\"static/app.css\"></head><body><div class=\"crt-beam\" aria-hidden=\"true\"></div><div class=\"app\"><header class=\"topbar\"><div class=\"brand\"><span class=\"tally-mark\" aria-hidden=\"true\"><span></span><span></span><span></span><span></span><span class=\"slash\"></span></span> tally</div><span class=\"version\" title=\"running build\"><span class=\"dot\" aria-hidden=\"true\"></span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(versionString())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 28, Col: 110}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 30, Col: 110}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</span></header><main><p class=\"lede\">Theme + widget sandbox. No data yet — styling lives in <code>static/app.css</code>.</p><section class=\"section\"><h2><span>Buttons</span></h2><div class=\"section-body\"><div class=\"row\"><button class=\"btn primary\" type=\"button\">Primary</button> <button class=\"btn ghost\" type=\"button\">Ghost</button> <button class=\"btn danger\" type=\"button\">Delete</button> <button class=\"btn primary sm\" type=\"button\">Small</button> <button class=\"btn ghost\" type=\"button\" disabled>Disabled</button></div></div></section><section class=\"section\"><h2><span>Checkboxes</span></h2><div class=\"section-body stack\"><label class=\"check strike\"><input type=\"checkbox\" checked> <span class=\"box\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</span></header><div class=\"cmdline\" aria-hidden=\"true\"><span class=\"prompt\">tally&gt;</span> <span class=\"cmd\">DES</span> <span class=\"go\">GO</span> <span class=\"caret\"></span></div><div class=\"ticker\" role=\"status\" aria-label=\"status\"><span class=\"stat\">TALLIES <b>12</b></span> <span class=\"stat\">DONE <b class=\"up\">7</b></span> <span class=\"stat\">OPEN <b>5</b></span> <span class=\"stat\">DUE <b class=\"dn\">2</b></span> <span class=\"stat\">STREAK <b>9d</b></span></div><main><p class=\"lede\">Theme + widget sandbox. No data yet — styling lives in <code>static/app.css</code>.</p><section class=\"section\"><h2><span>Buttons</span></h2><div class=\"section-body\"><div class=\"row\"><button class=\"btn primary\" type=\"button\">Primary</button> <button class=\"btn ghost\" type=\"button\">Ghost</button> <button class=\"btn danger\" type=\"button\">Delete</button> <button class=\"btn primary sm\" type=\"button\">Small</button> <button class=\"btn ghost\" type=\"button\" disabled>Disabled</button></div></div></section><section class=\"section\"><h2><span>Checkboxes</span></h2><div class=\"section-body stack\"><label class=\"check strike\"><input type=\"checkbox\" checked> <span class=\"box\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -92,7 +93,7 @@ func Page() templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(markCount(i))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 151, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 166, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -103,7 +104,7 @@ func Page() templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div></div></section></main><footer class=\"foot\">tally — Ember Terminal · design sandbox</footer></div></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div></div></section></main><footer class=\"foot\">tally — Amber CRT · design sandbox</footer></div></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
