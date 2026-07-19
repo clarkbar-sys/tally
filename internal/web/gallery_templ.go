@@ -49,7 +49,7 @@ func GalleryPage() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</span></header><div class=\"cmdline\" aria-hidden=\"true\"><span class=\"prompt\">tally&gt;</span> <span class=\"cmd\">DES</span> <span class=\"go\">GO</span> <span class=\"caret\"></span></div><div class=\"ticker\" role=\"status\" aria-label=\"status\"><span class=\"stat\">TALLIES <b>12</b></span> <span class=\"stat\">DONE <b class=\"up\">7</b></span> <span class=\"stat\">OPEN <b>5</b></span> <span class=\"stat\">DUE <b class=\"dn\">2</b></span> <span class=\"stat\">STREAK <b>9d</b></span></div><main><p class=\"lede\">Theme + widget sandbox. No data yet — styling lives in <code>static/app.css</code>.</p><section class=\"section\"><h2><span>Buttons</span></h2><div class=\"section-body\"><div class=\"row\"><button class=\"btn primary\" type=\"button\">Primary</button> <button class=\"btn ghost\" type=\"button\">Ghost</button> <button class=\"btn danger\" type=\"button\">Delete</button> <button class=\"btn primary sm\" type=\"button\">Small</button> <button class=\"btn ghost\" type=\"button\" disabled>Disabled</button></div></div></section><section class=\"section\"><h2><span>Checkboxes</span></h2><div class=\"section-body stack\"><label class=\"check strike\"><input type=\"checkbox\" checked> <span class=\"box\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</span></header><div class=\"ticker\" role=\"status\" aria-label=\"status\"><span class=\"stat\"><b>12</b> notches</span> <span class=\"stat\"><b class=\"up\">7</b> done</span> <span class=\"stat\"><b>5</b> open</span> <span class=\"stat\"><b class=\"dn\">2</b> due</span> <span class=\"stat\"><b>9d</b> streak</span></div><main><p class=\"lede\">Theme + widget sandbox. No data yet — styling lives in <code>static/app.css</code>.</p><section class=\"section\"><h2><span>Buttons</span></h2><div class=\"section-body\"><div class=\"row\"><button class=\"btn primary\" type=\"button\">Primary</button> <button class=\"btn ghost\" type=\"button\">Ghost</button> <button class=\"btn danger\" type=\"button\">Delete</button> <button class=\"btn primary sm\" type=\"button\">Small</button> <button class=\"btn ghost\" type=\"button\" disabled>Disabled</button></div></div></section><section class=\"section\"><h2><span>Checkboxes</span></h2><div class=\"section-body stack\"><label class=\"check strike\"><input type=\"checkbox\" checked> <span class=\"box\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -93,7 +93,7 @@ func GalleryPage() templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(markCount(i))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 167, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/gallery.templ`, Line: 161, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
