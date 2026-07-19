@@ -14,12 +14,16 @@
 //
 // Data model (one object store, `notches`, keyed by id):
 //   Notch { id, title, note, tags:[{name,color}], items:[{id,text,done}],
-//           parentId:string|null, createdAt, updatedAt }
+//           parentId:string|null, status:'open'|'done'|'not_planned',
+//           createdAt, updatedAt }
 // A sub-notch is an ordinary notch whose parentId points at its parent. Notes,
 // checklists, and tags are embedded in the notch document. Any notch can be
 // re-parented after the fact (the "Parent" picker on the detail view) to group
 // existing notches — the only restriction is that a notch can't be moved under
-// itself or one of its own descendants, which would make a cycle.
+// itself or one of its own descendants, which would make a cycle. A notch is
+// never deleted — it's closed as done or not planned (and can be reopened),
+// same as a GitHub issue. Records from before `status` existed are treated as
+// 'open'.
 
 (() => {
   'use strict';
@@ -103,7 +107,6 @@
 
   const dbAll = () => tx('readonly', (s) => s.getAll());
   const dbPut = (rec) => tx('readwrite', (s) => s.put(rec));
-  const dbDelMany = (ids) => tx('readwrite', (s) => { ids.forEach((id) => s.delete(id)); });
 
   // ---------- state ----------
   let notches = []; // in-memory source of truth, mirrored to IndexedDB
@@ -132,7 +135,7 @@
     return out;
   }
 
-  // n plus every notch beneath it (for cascade delete and the move guard)
+  // n plus every notch beneath it (for the move guard)
   function subtree(n) {
     const out = [n];
     for (const c of notches.filter((x) => x.parentId === n.id)) out.push(...subtree(c));
@@ -168,7 +171,7 @@
   async function createNotch(title, parentId) {
     const n = {
       id: uid('n_'), title: title.trim(), note: '', tags: [], items: [],
-      parentId: parentId || null, createdAt: now(), updatedAt: now(),
+      parentId: parentId || null, status: 'open', createdAt: now(), updatedAt: now(),
     };
     try {
       await dbPut(n); // persist first, then adopt into memory, so the two agree
@@ -180,12 +183,10 @@
     ticker();
     return n;
   }
-  async function removeNotch(n) {
-    const doomed = subtree(n);
-    const ids = new Set(doomed.map((x) => x.id));
-    notches = notches.filter((x) => !ids.has(x.id));
-    await dbDelMany([...ids]);
-    ticker();
+  const notchStatus = (n) => n.status || 'open';
+  async function setStatus(n, status) {
+    n.status = status;
+    await persist(n);
   }
 
   // ---------- helpers ----------
@@ -225,13 +226,21 @@
       done += s.done; total += s.total;
       for (const g of n.tags) tags.add(g.name);
     }
+    const open = notches.filter((n) => notchStatus(n) === 'open').length;
     el.innerHTML =
-      `<span class="stat">NOTCHES <b>${notches.length}</b></span>` +
+      `<span class="stat">NOTCHES <b>${open}</b></span>` +
       `<span class="stat">ITEMS <b class="up">${done}</b>/<b>${total}</b></span>` +
       `<span class="stat">TAGS <b>${tags.size}</b></span>`;
   }
 
   // ---------- cards ----------
+  function statusLab(n) {
+    const status = notchStatus(n);
+    if (status === 'done') return '<span class="lab green">done</span>';
+    if (status === 'not_planned') return '<span class="lab gray">not planned</span>';
+    return '';
+  }
+
   function cardHTML(n) {
     const s = itemStats(n);
     const kids = childrenOf(n.id).length;
@@ -240,7 +249,7 @@
     if (s.total) bits.push(`<span class="num">${s.done}/${s.total}</span> done`);
     if (n.note) bits.push('note');
     const meta = bits.length ? bits.join(' · ') : 'empty';
-    const tags = n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
+    const tags = statusLab(n) + n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
     return `
       <a class="card notch-card" href="#/n/${esc(n.id)}">
         <div class="title">${n.title ? esc(n.title) : '<span class="untitled">untitled</span>'}</div>
@@ -308,11 +317,17 @@
       <span class="chip tag-chip"><span class="lab ${esc(g.color)}">${esc(g.name)}</span>
         <button class="x" type="button" data-del-tag="${esc(g.name)}" aria-label="remove tag">&times;</button></span>`).join('');
 
+    const status = notchStatus(n);
+    const closeControls = status === 'open'
+      ? `<button class="btn ghost sm" id="close-not-planned" type="button">Not planned</button>
+         <button class="btn primary sm" id="close-done" type="button">Close as done</button>`
+      : `${statusLab(n)}<button class="btn ghost sm" id="reopen" type="button">Reopen</button>`;
+
     view().innerHTML = `
       <p class="lede">← ${crumbs}</p>
 
       <section class="section">
-        <h2><span>Notch</span><button class="btn danger sm" id="delete" type="button">Delete</button></h2>
+        <h2><span>Notch</span><span class="row" style="gap:8px">${closeControls}</span></h2>
         <div class="section-body stack">
           <label class="field"><span>Title</span><input class="input" id="title" type="text" value="${esc(n.title)}" placeholder="Untitled"/></label>
           <label class="field"><span>Parent</span>
@@ -451,16 +466,19 @@
       persist(n).then(() => renderDetail(n));
       return;
     }
-    if (e.target.id === 'delete') {
+    if (e.target.id === 'close-done') {
       const n = currentDetail(); if (!n) return;
-      const count = subtree(n).length - 1;
-      const msg = count
-        ? `Delete this notch and its ${count} sub-notch${count === 1 ? '' : 'es'}? This cannot be undone.`
-        : 'Delete this notch? This cannot be undone.';
-      if (confirm(msg)) {
-        const parentId = n.parentId;
-        removeNotch(n).then(() => { location.hash = parentId ? '#/n/' + parentId : '#/'; });
-      }
+      setStatus(n, 'done').then(() => renderDetail(n));
+      return;
+    }
+    if (e.target.id === 'close-not-planned') {
+      const n = currentDetail(); if (!n) return;
+      setStatus(n, 'not_planned').then(() => renderDetail(n));
+      return;
+    }
+    if (e.target.id === 'reopen') {
+      const n = currentDetail(); if (!n) return;
+      setStatus(n, 'open').then(() => renderDetail(n));
       return;
     }
   }
