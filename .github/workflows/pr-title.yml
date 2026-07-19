@@ -1,0 +1,26 @@
+name: pr-title
+
+# Require Conventional Commits on pull-request titles. This repo squash-merges,
+# so the PR title becomes the commit message on main -- the exact text
+# release-please parses to decide releases. Keeping titles conventional is what
+# lets release-please cut releases automatically: feat -> minor, fix -> patch,
+# a "!" or BREAKING CHANGE -> major; other types (chore, docs, ci, refactor,
+# ...) are valid but don't bump the version.
+#
+# Make this a *required* status check in the branch-protection rule for main to
+# actually block non-conventional titles from merging.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  lint-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
