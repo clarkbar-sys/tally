@@ -15,3 +15,11 @@
 # abstractly since; that commit is already pushed/shared, so it stays
 # in history and needs suppressing there too.
 e865f238c995cbc2be102f1f66f0e287a6ba97d1:.gitleaksignore:generic-api-key:5
+
+# pr-38/design/tally-spike.html on gh-pages, one commit only -- gitleaks
+# scans every local branch by default (confirmed: fetch-depth: 0 fetches
+# all of refs/heads/*, not just the one being tested), and gh-pages is a
+# generated deploy branch that happened to publish the spike before its
+# variable got renamed. The current gh-pages tip already has the rename;
+# this is a single stale historical deploy commit that won't recur.
+493fba2a2ddb0ec5a6c587a77b33d0b562e26f53:pr-38/design/tally-spike.html:generic-api-key:341

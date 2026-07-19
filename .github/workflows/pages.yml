@@ -73,14 +73,22 @@ jobs:
         id: spikes
         run: |
           base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/design"
+          block=""
+          if [ -d design ]; then
+            for f in design/*.html; do
+              [ -e "$f" ] || continue
+              block="$(printf '%s- [%s](%s/%s)\n' "$block" "$(basename "$f")" "$base" "$(basename "$f")")"
+            done
+          fi
+          # GitHub Actions expressions don't interpret \n in string literals, so
+          # any leading blank line before "Design spikes:" has to be a real
+          # newline built here in bash, not in the message: template below.
+          if [ -n "$block" ]; then
+            block="$(printf 'Design spikes:\n%s' "$block")"
+          fi
           {
             echo 'links<<SPIKES_EOF'
-            if [ -d design ]; then
-              for f in design/*.html; do
-                [ -e "$f" ] || continue
-                echo "- [$(basename "$f")]($base/$(basename "$f"))"
-              done
-            fi
+            printf '%s\n' "$block"
             echo 'SPIKES_EOF'
           } >> "$GITHUB_OUTPUT"
       - uses: peaceiris/actions-gh-pages@v4
@@ -94,7 +102,8 @@ jobs:
           header: pages-preview
           message: |
             Preview (real UI, demo data): https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
-            ${{ steps.spikes.outputs.links && format('\n\nDesign spikes:\n{0}', steps.spikes.outputs.links) || '' }}
+
+            ${{ steps.spikes.outputs.links }}
 
   # Cleanup: remove a PR's preview folder from gh-pages once it closes, so stale
   # previews don't accumulate.
