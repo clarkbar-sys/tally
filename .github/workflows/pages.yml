@@ -5,8 +5,10 @@ name: pages
 # the gh-pages branch: production at the branch root on push to main, and a
 # per-PR preview under pr-<number>/ for same-repo pull requests. The preview is
 # the actual app, not a hand-maintained mockup, so it can never drift from what
-# ships. Requires a one-time repo setting change -- see CONTRIBUTING.md's
-# "GitHub Pages" section.
+# ships. Anything under design/ (throwaway click-through spikes) is copied in
+# alongside it and linked from the PR comment separately, so a spike is
+# viewable on a phone without touching the app build. Requires a one-time repo
+# setting change -- see CONTRIBUTING.md's "GitHub Pages" section.
 
 on:
   push:
@@ -36,6 +38,8 @@ jobs:
           cache: true
       - name: build static site
         run: go run ./cmd/tally -export ./_site
+      - name: include design spikes
+        run: '[ -d design ] && cp -r design ./_site/design || true'
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -63,6 +67,22 @@ jobs:
           cache: true
       - name: build static site
         run: go run ./cmd/tally -export ./_site
+      - name: include design spikes
+        run: '[ -d design ] && cp -r design ./_site/design || true'
+      - name: list design spikes
+        id: spikes
+        run: |
+          base="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/design"
+          {
+            echo 'links<<SPIKES_EOF'
+            if [ -d design ]; then
+              for f in design/*.html; do
+                [ -e "$f" ] || continue
+                echo "- [$(basename "$f")]($base/$(basename "$f"))"
+              done
+            fi
+            echo 'SPIKES_EOF'
+          } >> "$GITHUB_OUTPUT"
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -74,6 +94,7 @@ jobs:
           header: pages-preview
           message: |
             Preview (real UI, demo data): https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
+            ${{ steps.spikes.outputs.links && format('\n\nDesign spikes:\n{0}', steps.spikes.outputs.links) || '' }}
 
   # Cleanup: remove a PR's preview folder from gh-pages once it closes, so stale
   # previews don't accumulate.
