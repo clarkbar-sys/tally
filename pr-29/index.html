@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>tally — demo mockup</title>
+<meta name="description" content="A static, clickable demo mockup of tally's UI. Synthetic data only.">
+<style>
+  /* ---------- Theme tokens ---------- */
+  :root{
+    color-scheme: light dark;
+    --bg: #f6f1e6;
+    --bg-raised: #fffdf8;
+    --ink: #2b241c;
+    --ink-dim: #6b6153;
+    --ink-faint: #948a7a;
+    --line: #e2d8c4;
+    --line-strong: #cabb9e;
+    --accent: #8a5a34;
+    --accent-strong: #6e4425;
+    --accent-tint: #efe1cc;
+    --credit: #2f6f4e;
+    --credit-tint: #e2efe6;
+    --debit: #2b241c;
+    --warn: #a3551f;
+    --warn-tint: #f5e2cc;
+    --danger: #a13a34;
+    --chip-bg: #efe6d3;
+    --chip-ink: #5b4a30;
+    --shadow: 0 1px 2px rgba(43,36,28,.06), 0 4px 14px rgba(43,36,28,.06);
+    --radius: 14px;
+    --focus: #2f6f4e;
+  }
+  :root[data-theme="dark"]{
+    --bg: #1c1811;
+    --bg-raised: #241f17;
+    --ink: #ece2cf;
+    --ink-dim: #b8ab92;
+    --ink-faint: #8a7d67;
+    --line: #382f22;
+    --line-strong: #4a3f2d;
+    --accent: #d1a26a;
+    --accent-strong: #e6bd8a;
+    --accent-tint: #33281a;
+    --credit: #7fc79a;
+    --credit-tint: #1f2e24;
+    --debit: #ece2cf;
+    --warn: #e0a869;
+    --warn-tint: #362a19;
+    --danger: #e08a80;
+    --chip-bg: #332a1c;
+    --chip-ink: #d8c7a4;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.35);
+    --focus: #7fc79a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: #1c1811;
+      --bg-raised: #241f17;
+      --ink: #ece2cf;
+      --ink-dim: #b8ab92;
+      --ink-faint: #8a7d67;
+      --line: #382f22;
+      --line-strong: #4a3f2d;
+      --accent: #d1a26a;
+      --accent-strong: #e6bd8a;
+      --accent-tint: #33281a;
+      --credit: #7fc79a;
+      --credit-tint: #1f2e24;
+      --debit: #ece2cf;
+      --warn: #e0a869;
+      --warn-tint: #362a19;
+      --danger: #e08a80;
+      --chip-bg: #332a1c;
+      --chip-ink: #d8c7a4;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.35);
+      --focus: #7fc79a;
+    }
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.4;
+    min-height: 100vh;
+    touch-action: manipulation;
+  }
+  button, input{ font: inherit; color: inherit; }
+  ul{ list-style:none; margin:0; padding:0; }
+  .app{
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 0 0 64px;
+    min-height: 100vh;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 10px;
+    background: var(--bg);
+  }
+  .brand{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: -0.01em;
+  }
+  .tally-mark{
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 20px;
+  }
+  .tally-mark span{
+    width: 3px;
+    height: 18px;
+    background: var(--accent);
+    border-radius: 2px;
+    display: block;
+  }
+  .tally-mark span.slash{
+    width: 20px;
+    height: 3px;
+    align-self: center;
+    margin-left: -20px;
+    transform: rotate(-38deg);
+    border-radius: 2px;
+  }
+  .brand .tagline{
+    display: none;
+  }
+  .theme-toggle{
+    border: 1px solid var(--line-strong);
+    background: var(--bg-raised);
+    border-radius: 999px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+  }
+  .theme-toggle:active{ transform: translateY(1px); }
+
+  /* ---------- Demo banner ---------- */
+  .demo-banner{
+    margin: 0 16px 14px;
+    padding: 10px 14px;
+    background: var(--warn-tint);
+    color: var(--warn);
+    border: 1px solid var(--warn);
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    letter-spacing: 0.01em;
+  }
+
+  /* ---------- Tabs ---------- */
+  .tabs{
+    display: flex;
+    gap: 6px;
+    margin: 0 16px 16px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 4px;
+  }
+  .tab{
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--ink-dim);
+    padding: 10px 8px;
+    border-radius: 9px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .tab.active{
+    background: var(--accent);
+    color: #fff8ec;
+  }
+  :root[data-theme="dark"] .tab.active{ color: #211a10; }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .tab.active{ color: #211a10; }
+  }
+
+  .view{ display: none; padding: 0 16px; }
+  .view.active{ display: block; }
+
+  /* ---------- Accounts strip ---------- */
+  .accounts-strip{
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 2px 2px 14px;
+    margin: 0 -2px 4px;
+    scrollbar-width: none;
+  }
+  .accounts-strip::-webkit-scrollbar{ display:none; }
+  .account-card{
+    flex: 0 0 auto;
+    min-width: 148px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    box-shadow: var(--shadow);
+  }
+  .account-card.total{
+    background: var(--accent-tint);
+    border-color: var(--accent);
+  }
+  .account-name{
+    font-size: 12px;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+  .account-balance{
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 6px;
+  }
+  .account-balance.negative{ color: var(--danger); }
+  .account-sync{
+    font-size: 11px;
+    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .account-sync.stale{
+    color: var(--warn);
+    font-weight: 600;
+  }
+  .stale-dot{
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--warn);
+    display: inline-block;
+    flex: none;
+  }
+
+  /* ---------- Search ---------- */
+  .search-row{ margin-bottom: 14px; }
+  .search-row input{
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--line-strong);
+    background: var(--bg-raised);
+    border-radius: 12px;
+    font-size: 15px;
+    color: var(--ink);
+  }
+  .search-row input:focus{
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+  .search-row input::placeholder{ color: var(--ink-faint); }
+  .result-count{
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin: -6px 0 12px 2px;
+  }
+
+  /* ---------- Transaction list ---------- */
+  .tx-list{
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .tx{
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    box-shadow: var(--shadow);
+  }
+  .tx[hidden]{ display: none; }
+  .tx-main{
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .tx-info{ min-width: 0; }
+  .tx-merchant{
+    display: block;
+    font-weight: 600;
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tx-meta{
+    display: block;
+    font-size: 12.5px;
+    color: var(--ink-dim);
+    margin-top: 2px;
+  }
+  .tx-amount{
+    font-weight: 700;
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--debit);
+  }
+  .tx-amount.credit{ color: var(--credit); }
+
+  .tx-tags{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .chip{
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--chip-bg);
+    color: var(--chip-ink);
+    border: none;
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .chip .chip-x{
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0 0 0 2px;
+    opacity: .65;
+  }
+  .chip .chip-x:hover{ opacity: 1; }
+  .chip-add{
+    background: transparent;
+    border: 1px dashed var(--line-strong);
+    color: var(--ink-faint);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .chip-add:hover{ border-color: var(--accent); color: var(--accent); }
+  .tag-input{
+    border: 1px solid var(--accent);
+    background: var(--bg);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 12px;
+    width: 96px;
+  }
+
+  .tx-footer{
+    display: flex;
+    align-items: center;
+    margin-top: 8px;
+  }
+  .note-toggle{
+    border: none;
+    background: transparent;
+    color: var(--ink-faint);
+    font-size: 12.5px;
+    padding: 6px 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 30px;
+  }
+  .note-toggle:hover{ color: var(--accent); }
+  .tx-note{
+    margin-top: 6px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font-size: 13.5px;
+    color: var(--ink-dim);
+  }
+  .tx-note[hidden]{ display: none; }
+  .tx-note[contenteditable="true"]:focus{
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+    color: var(--ink);
+  }
+  .tx-note.placeholder{ font-style: italic; }
+
+  /* ---------- Stories ---------- */
+  .story-card{
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px 16px 16px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .story-title{
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .story-span{
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    margin: 0 0 12px;
+  }
+  .story-narrative{
+    font-size: 14.5px;
+    color: var(--ink-dim);
+    margin: 0 0 16px;
+    line-height: 1.55;
+  }
+  .story-thread{
+    position: relative;
+    padding-left: 20px;
+    margin-bottom: 14px;
+  }
+  .story-thread::before{
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    background: var(--line-strong);
+  }
+  .story-tx{
+    position: relative;
+    padding: 0 0 16px;
+  }
+  .story-tx:last-child{ padding-bottom: 0; }
+  .story-tx::before{
+    content: "";
+    position: absolute;
+    left: -20px;
+    top: 4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--bg-raised);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .story-tx-row{
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: baseline;
+  }
+  .story-tx-name{ font-weight: 600; font-size: 14.5px; }
+  .story-tx-date{ font-size: 12px; color: var(--ink-faint); margin-left: 6px; }
+  .story-tx-amount{
+    font-weight: 700;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .story-tx-running{
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+  .story-notches{
+    display: flex;
+    gap: 3px;
+    margin-top: 6px;
+  }
+  .story-notches span{
+    width: 3px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 2px;
+    opacity: .35;
+  }
+  .story-notches span.filled{ opacity: 1; }
+
+  .story-total{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 14px;
+    border-top: 1px dashed var(--line-strong);
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .story-total .value{
+    font-variant-numeric: tabular-nums;
+    color: var(--accent-strong);
+  }
+  .story-empty-note{
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    text-align: center;
+    padding: 18px 8px 4px;
+  }
+
+  .section-label{
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+    margin: 4px 2px 10px;
+  }
+
+  footer.app-footer{
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    padding: 20px 16px 0;
+  }
+  footer.app-footer a{ color: var(--ink-faint); }
+
+  @media (min-width: 480px){
+    .brand .tagline{
+      display: inline;
+      font-weight: 400;
+      font-size: 12px;
+      color: var(--ink-faint);
+      margin-left: 4px;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand">
+      <span class="tally-mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span class="slash"></span></span>
+      tally <span class="tagline">a ledger that accumulates meaning</span>
+    </div>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle light and dark theme">
+      <span id="themeIcon">🌗</span>
+    </button>
+  </div>
+
+  <div class="demo-banner">DEMO — synthetic data, not a real ledger</div>
+
+  <nav class="tabs" role="tablist" aria-label="Primary view">
+    <button class="tab active" id="tabLedger" role="tab" aria-selected="true" data-view="ledger">Ledger</button>
+    <button class="tab" id="tabStories" role="tab" aria-selected="false" data-view="stories">Stories</button>
+  </nav>
+
+  <!-- ===================== LEDGER VIEW ===================== -->
+  <section id="view-ledger" class="view active" role="tabpanel" aria-labelledby="tabLedger">
+
+    <div class="accounts-strip" id="accountsStrip">
+      <div class="account-card">
+        <div class="account-name">Checking •••4821</div>
+        <div class="account-balance">$3,214.58</div>
+        <div class="account-sync"><span>synced 2 min ago</span></div>
+      </div>
+      <div class="account-card">
+        <div class="account-name">Savings •••9013</div>
+        <div class="account-balance">$18,442.10</div>
+        <div class="account-sync"><span>synced 1 hr ago</span></div>
+      </div>
+      <div class="account-card">
+        <div class="account-name">Credit Card •••2210</div>
+        <div class="account-balance negative">−$1,208.44</div>
+        <div class="account-sync stale"><span class="stale-dot" aria-hidden="true"></span><span>stale — synced 6 days ago</span></div>
+      </div>
+      <div class="account-card total">
+        <div class="account-name">Total</div>
+        <div class="account-balance">$20,448.24</div>
+        <div class="account-sync"><span>across 3 accounts</span></div>
+      </div>
+    </div>
+
+    <div class="search-row">
+      <input type="search" id="searchBox" placeholder="Search merchant, tag, or note…" aria-label="Search transactions" autocomplete="off">
+    </div>
+    <div class="result-count" id="resultCount"></div>
+
+    <ul class="tx-list" id="txList">
+      <!-- Transactions injected by JS from DATA -->
+    </ul>
+  </section>
+
+  <!-- ===================== STORIES VIEW ===================== -->
+  <section id="view-stories" class="view" role="tabpanel" aria-labelledby="tabStories">
+    <div class="section-label">Featured story</div>
+
+    <div class="story-card">
+      <h2 class="story-title">🔨 Kitchen renovation</h2>
+      <p class="story-span">May 22 – Jul 14, 2026 · 5 transactions · 3 accounts</p>
+      <p class="story-narrative">
+        Redid the kitchen this summer — new cabinets, tile backsplash, and a range
+        that actually holds a temperature. Started with a deposit to the contractor
+        in May, wrapped up with tile in mid-July. Threading these together is the
+        whole point: none of these amounts mean much alone, but strung end to end
+        they're "what the kitchen cost."
+      </p>
+
+      <div class="story-thread" id="storyThread">
+        <!-- story transactions injected by JS -->
+      </div>
+
+      <div class="story-total">
+        <span>Running total</span>
+        <span class="value" id="storyTotal">$5,115.05</span>
+      </div>
+    </div>
+
+    <div class="section-label">More stories</div>
+    <div class="story-card" style="opacity:.6;">
+      <h2 class="story-title" style="font-size:16px;">🚗 That car problem</h2>
+      <p class="story-span">2 transactions so far · still open</p>
+      <p class="story-empty-note">This is a mockup — only the kitchen story is fully wired up above.</p>
+    </div>
+  </section>
+
+  <footer class="app-footer">
+    tally — design mockup, no backend. Source on <a href="https://github.com/clarkbar-sys/tally">GitHub</a>.
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- Theme ---------------- */
+  var root = document.documentElement;
+  var themeToggle = document.getElementById('themeToggle');
+  var themeIcon = document.getElementById('themeIcon');
+  var STORAGE_KEY = 'tally-demo-theme';
+
+  function systemPrefersDark(){
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function applyTheme(mode){
+    // mode: 'light' | 'dark'
+    root.setAttribute('data-theme', mode);
+    themeIcon.textContent = mode === 'dark' ? '🌙' : '☀️';
+  }
+  function initTheme(){
+    var saved = null;
+    try { saved = window.localStorage.getItem(STORAGE_KEY); } catch (e) {}
+    var mode = saved || (systemPrefersDark() ? 'dark' : 'light');
+    applyTheme(mode);
+  }
+  themeToggle.addEventListener('click', function(){
+    var current = root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    var next = current === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    try { window.localStorage.setItem(STORAGE_KEY, next); } catch (e) {}
+  });
+  initTheme();
+
+  /* ---------------- Tabs ---------------- */
+  var tabs = document.querySelectorAll('.tab');
+  var views = { ledger: document.getElementById('view-ledger'), stories: document.getElementById('view-stories') };
+  tabs.forEach(function(tab){
+    tab.addEventListener('click', function(){
+      tabs.forEach(function(t){ t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
+      Object.keys(views).forEach(function(k){ views[k].classList.remove('active'); });
+      views[tab.getAttribute('data-view')].classList.add('active');
+    });
+  });
+
+  /* ---------------- Transaction data (synthetic) ---------------- */
+  var TX = [
+    { id:1,  date:'Jul 17', merchant:'Green Leaf Grocery',        account:'Checking',    amount:-62.14,  tags:['groceries'],            note:'' },
+    { id:2,  date:'Jul 16', merchant:'Riverside Coffee Co.',      account:'Checking',    amount:-5.75,   tags:['coffee'],                note:'' },
+    { id:3,  date:'Jul 15', merchant:'Acme Payroll Inc',          account:'Checking',    amount:2840.00, tags:['income'],                note:'Biweekly paycheck.' },
+    { id:4,  date:'Jul 14', merchant:'Tile & Stone Supply',       account:'Credit Card', amount:-412.30, tags:['kitchen','home'],        note:'Backsplash tile, final order.', story:true },
+    { id:5,  date:'Jul 12', merchant:'Cascade Power & Light',     account:'Checking',    amount:-96.40,  tags:['utilities'],             note:'' },
+    { id:6,  date:'Jul 10', merchant:'Whistlepine Hardware',      account:'Credit Card', amount:-58.90,  tags:['home','tools'],          note:'' },
+    { id:7,  date:'Jul 08', merchant:'Northgate Cinema',          account:'Credit Card', amount:-28.00,  tags:['fun'],                    note:'' },
+    { id:8,  date:'Jul 05', merchant:'Larkspur Contracting LLC',  account:'Savings',     amount:-1850.00,tags:['kitchen','contractor'],  note:'Cabinet install + labor, second payment.', story:true },
+    { id:9,  date:'Jul 03', merchant:'Green Leaf Grocery',        account:'Checking',    amount:-74.02,  tags:['groceries'],             note:'' },
+    { id:10, date:'Jul 01', merchant:'Meadowbrook Apartments',    account:'Checking',    amount:-1650.00,tags:['rent'],                   note:'' },
+    { id:11, date:'Jun 28', merchant:'Riverside Coffee Co.',      account:'Checking',    amount:-4.50,   tags:['coffee'],                 note:'' },
+    { id:12, date:'Jun 24', merchant:'Appliance Depot',           account:'Credit Card', amount:-2140.00,tags:['kitchen','appliance'],   note:'The range that actually holds temperature.', story:true },
+    { id:13, date:'Jun 20', merchant:'Cascade Power & Light',     account:'Checking',    amount:-88.15,  tags:['utilities'],              note:'' },
+    { id:14, date:'Jun 18', merchant:'Sunny Fields Farm Stand',   account:'Checking',    amount:-31.40,  tags:['groceries'],              note:'' },
+    { id:15, date:'Jun 15', merchant:'Acme Payroll Inc',          account:'Checking',    amount:2840.00, tags:['income'],                 note:'Biweekly paycheck.' },
+    { id:16, date:'Jun 12', merchant:'Blue Fox Cinema',           account:'Credit Card', amount:14.00,   tags:['refund'],                 note:'Refund for a cancelled showing.' },
+    { id:17, date:'Jun 05', merchant:'Whistlepine Hardware',      account:'Credit Card', amount:-212.75, tags:['kitchen','paint'],       note:'Cabinet paint + primer, two coats.', story:true },
+    { id:18, date:'Jun 01', merchant:'Meadowbrook Apartments',    account:'Checking',    amount:-1650.00,tags:['rent'],                   note:'' },
+    { id:19, date:'May 29', merchant:'Fiberlink Internet',        account:'Checking',    amount:-64.99,  tags:['utilities'],              note:'' },
+    { id:20, date:'May 22', merchant:'Larkspur Contracting LLC',  account:'Savings',     amount:-500.00, tags:['kitchen','contractor'],  note:'Deposit to get on the schedule.', story:true }
+  ];
+
+  function fmtMoney(n){
+    var neg = n < 0;
+    var abs = Math.abs(n).toFixed(2);
+    var parts = abs.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return (neg ? '−' : '+') + '$' + parts[0] + '.' + parts[1];
+  }
+  function fmtMoneyPlain(n){
+    var neg = n < 0;
+    var abs = Math.abs(n).toFixed(2);
+    var parts = abs.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return (neg ? '−' : '') + '$' + parts[0] + '.' + parts[1];
+  }
+
+  /* ---------------- Render transaction list ---------------- */
+  var txListEl = document.getElementById('txList');
+  var resultCountEl = document.getElementById('resultCount');
+
+  function chipMarkup(tag){
+    return '<span class="chip" data-tag="' + tag + '">' + tag +
+      '<button class="chip-x" type="button" aria-label="Remove tag ' + tag + '">×</button></span>';
+  }
+
+  function renderTx(tx){
+    var li = document.createElement('li');
+    li.className = 'tx';
+    li.dataset.merchant = tx.merchant.toLowerCase();
+    li.dataset.account = tx.account.toLowerCase();
+    li.dataset.note = (tx.note || '').toLowerCase();
+
+    var isCredit = tx.amount > 0;
+    var chips = tx.tags.map(chipMarkup).join('');
+
+    li.innerHTML =
+      '<div class="tx-main">' +
+        '<div class="tx-info">' +
+          '<span class="tx-merchant">' + tx.merchant + '</span>' +
+          '<span class="tx-meta">' + tx.date + ' · ' + tx.account + '</span>' +
+        '</div>' +
+        '<div class="tx-amount' + (isCredit ? ' credit' : '') + '">' + fmtMoney(tx.amount) + '</div>' +
+      '</div>' +
+      '<div class="tx-tags">' + chips + '<button class="chip-add" type="button">+ tag</button></div>' +
+      '<div class="tx-footer">' +
+        '<button class="note-toggle" type="button" aria-expanded="false">' +
+          '<span class="note-icon">' + (tx.note ? '📝' : '✎') + '</span>' +
+          '<span class="note-label">' + (tx.note ? 'note' : 'add note') + '</span>' +
+        '</button>' +
+      '</div>' +
+      '<div class="tx-note' + (tx.note ? '' : ' placeholder') + '" contenteditable="true" hidden>' +
+        (tx.note || 'Tap to add a note…') +
+      '</div>';
+
+    updateTagsData(li);
+    return li;
+  }
+
+  function updateTagsData(li){
+    var tags = Array.prototype.map.call(li.querySelectorAll('.chip'), function(c){ return c.dataset.tag; });
+    li.dataset.tags = tags.join(' ').toLowerCase();
+  }
+
+  TX.forEach(function(tx){ txListEl.appendChild(renderTx(tx)); });
+
+  /* ---- Tag add/remove (event delegation) ---- */
+  txListEl.addEventListener('click', function(e){
+    var removeBtn = e.target.closest('.chip-x');
+    if (removeBtn){
+      var chip = removeBtn.closest('.chip');
+      var li = chip.closest('.tx');
+      chip.remove();
+      updateTagsData(li);
+      return;
+    }
+
+    var addBtn = e.target.closest('.chip-add');
+    if (addBtn){
+      if (addBtn.previousElementSibling && addBtn.previousElementSibling.classList.contains('tag-input')) return;
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'tag-input';
+      input.placeholder = 'tag name';
+      input.maxLength = 24;
+      addBtn.parentNode.insertBefore(input, addBtn);
+      input.focus();
+
+      function commit(){
+        var val = input.value.trim().toLowerCase().replace(/\s+/g, '-');
+        var li = addBtn.closest('.tx');
+        if (val){
+          var span = document.createElement('span');
+          span.innerHTML = chipMarkup(val);
+          addBtn.parentNode.insertBefore(span.firstChild, addBtn);
+          updateTagsData(li);
+        }
+        input.remove();
+      }
+      input.addEventListener('keydown', function(ev){
+        if (ev.key === 'Enter'){ ev.preventDefault(); commit(); }
+        if (ev.key === 'Escape'){ input.remove(); }
+      });
+      input.addEventListener('blur', function(){ commit(); });
+      return;
+    }
+
+    var noteToggle = e.target.closest('.note-toggle');
+    if (noteToggle){
+      var footer = noteToggle.closest('.tx-footer');
+      var note = footer.nextElementSibling;
+      var expanded = noteToggle.getAttribute('aria-expanded') === 'true';
+      note.hidden = expanded;
+      noteToggle.setAttribute('aria-expanded', String(!expanded));
+      if (!expanded) {
+        // focus for editing convenience when opening a placeholder note
+        window.requestAnimationFrame(function(){ note.focus(); });
+      }
+      return;
+    }
+  });
+
+  // Clear placeholder styling once the user starts typing a real note.
+  txListEl.addEventListener('focusin', function(e){
+    if (e.target.classList && e.target.classList.contains('tx-note') && e.target.classList.contains('placeholder')){
+      if (e.target.textContent.indexOf('Tap to add') === 0){
+        e.target.textContent = '';
+      }
+    }
+  });
+  txListEl.addEventListener('focusout', function(e){
+    if (e.target.classList && e.target.classList.contains('tx-note')){
+      if (e.target.textContent.trim() === ''){
+        e.target.textContent = 'Tap to add a note…';
+        e.target.classList.add('placeholder');
+      } else {
+        e.target.classList.remove('placeholder');
+      }
+    }
+  });
+
+  /* ---- Search / filter ---- */
+  var searchBox = document.getElementById('searchBox');
+  function applyFilter(){
+    var q = searchBox.value.trim().toLowerCase();
+    var items = txListEl.querySelectorAll('.tx');
+    var shown = 0;
+    items.forEach(function(li){
+      var haystack = li.dataset.merchant + ' ' + li.dataset.tags + ' ' + li.dataset.note + ' ' + li.dataset.account;
+      var match = !q || haystack.indexOf(q) !== -1;
+      li.hidden = !match;
+      if (match) shown++;
+    });
+    resultCountEl.textContent = q
+      ? shown + ' of ' + items.length + ' transactions match “' + searchBox.value.trim() + '”'
+      : items.length + ' transactions';
+  }
+  searchBox.addEventListener('input', applyFilter);
+  applyFilter();
+
+  /* ---------------- Stories: Kitchen renovation ---------------- */
+  var storyThreadEl = document.getElementById('storyThread');
+  var storyTx = TX.filter(function(t){ return t.story; }).slice().reverse(); // chronological
+  var running = 0;
+  storyTx.forEach(function(tx, idx){
+    running += tx.amount;
+    var row = document.createElement('div');
+    row.className = 'story-tx';
+    var notches = '';
+    for (var i = 0; i < storyTx.length; i++){
+      notches += '<span class="' + (i <= idx ? 'filled' : '') + '"></span>';
+    }
+    row.innerHTML =
+      '<div class="story-tx-row">' +
+        '<span><span class="story-tx-name">' + tx.merchant + '</span><span class="story-tx-date">' + tx.date + '</span></span>' +
+        '<span class="story-tx-amount">' + fmtMoney(tx.amount) + '</span>' +
+      '</div>' +
+      '<div class="story-tx-running">running total: ' + fmtMoneyPlain(-running) + '</div>' +
+      '<div class="story-notches" aria-hidden="true">' + notches + '</div>';
+    storyThreadEl.appendChild(row);
+  });
+  document.getElementById('storyTotal').textContent = fmtMoneyPlain(-running);
+
+})();
+</script>
+</body>
+</html>
