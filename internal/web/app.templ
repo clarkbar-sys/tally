@@ -3,12 +3,15 @@
 package web
 
 // AppPage is tally's local-first app shell (epic #1). It renders only the static
-// chrome — the top bar, command line, and status ticker, themed Paper by
-// default — plus an empty <main> mount point and a <noscript> fallback.
-// Everything else (the tally list, detail views, and all persistence) is
-// driven client-side by static/app.js against browser IndexedDB: no server,
-// no data layer here. The same export feeds GitHub Pages, so the published
-// site is the whole app.
+// chrome — the top bar and a quiet status line — plus an empty <main> mount
+// point and a <noscript> fallback. Everything else (the tally list, detail
+// views, and all persistence) is driven client-side by static/app.js against
+// browser IndexedDB: no server, no data layer here. The same export feeds
+// GitHub Pages, so the published site is the whole app.
+//
+// The default theme is Paper (a calm cream-on-sepia almanac look): app.css
+// carries it on :root, so a fresh browser needs no data-theme attribute. The
+// theme picker and an inline <head> script can still switch it per browser.
 templ AppPage() {
 	<!doctype html>
 	<html lang="en">
@@ -40,23 +43,17 @@ templ AppPage() {
 						<label class="theme-picker">
 							<span class="visually-hidden">Theme</span>
 							<select id="theme-select" aria-label="Theme">
-								<option value="amber-crt">Amber CRT</option>
+								<option value="paper" selected>Paper</option>
 								<option value="slate">Slate</option>
-								<option value="paper">Paper</option>
+								<option value="amber-crt">Amber CRT</option>
 								<option value="gruvbox">Gruvbox</option>
 							</select>
 						</label>
 						<span class="version" title="running build"><span class="dot" aria-hidden="true"></span>{ versionString() }</span>
 					</div>
 				</header>
-				<div class="cmdline" aria-hidden="true">
-					<span class="prompt">tally&gt;</span>
-					<span class="cmd">NCH</span>
-					<span class="go">GO</span>
-					<span class="caret"></span>
-				</div>
 				<div class="ticker" id="ticker" role="status" aria-label="status">
-					<span class="stat">NOTCHES <b>0</b></span>
+					<span class="stat"><b>0</b> open</span>
 				</div>
 				<main id="view" aria-live="polite"></main>
 				<noscript>

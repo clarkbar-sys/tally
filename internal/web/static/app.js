@@ -252,9 +252,9 @@
     }
     const open = notches.filter((n) => notchStatus(n) === 'open').length;
     el.innerHTML =
-      `<span class="stat">NOTCHES <b>${open}</b></span>` +
-      `<span class="stat">ITEMS <b class="up">${done}</b>/<b>${total}</b></span>` +
-      `<span class="stat">TAGS <b>${tags.size}</b></span>`;
+      `<span class="stat"><b>${open}</b> open</span>` +
+      `<span class="stat"><b class="up">${done}</b> of <b>${total}</b> items done</span>` +
+      `<span class="stat"><b>${tags.size}</b> tags</span>`;
   }
 
   // ---------- cards ----------
@@ -275,7 +275,7 @@
     const meta = bits.length ? bits.join(' · ') : 'empty';
     const tags = statusLab(n) + n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
     return `
-      <a class="card notch-card" href="#/n/${esc(n.id)}">
+      <a class="notch-card" href="#/n/${esc(n.id)}">
         <div class="title">${n.title ? esc(n.title) : '<span class="untitled">untitled</span>'}</div>
         ${tags ? `<div class="row" style="margin-top:8px">${tags}</div>` : ''}
         <div class="meta">${meta} · updated ${fmtDate(n.updatedAt)}</div>
@@ -301,6 +301,10 @@
         <h2><span>Notches</span></h2>
         <div class="section-body stack">
           <label class="field"><span>Search</span><input class="input" id="search" type="search" value="${esc(DEFAULT_QUERY)}" placeholder="Filter by title, note, item, or tag… (try is:open, is:closed)"/></label>
+          <div class="filter" id="filter" role="group" aria-label="Filter by status">
+            <button type="button" data-status="open" aria-pressed="true"><span class="fdot" aria-hidden="true"></span>Open <span class="n">0</span></button>
+            <button type="button" data-status="closed" aria-pressed="false"><span class="fdot" aria-hidden="true"></span>Closed <span class="n">0</span></button>
+          </div>
           <div id="notch-list" class="stack"></div>
         </div>
       </section>`;
@@ -310,14 +314,45 @@
   }
 
   function renderCards(q) {
+    updateFilter(q);
     const list = document.getElementById('notch-list');
     if (!list) return;
     const rows = topLevel().filter((n) => matches(n, q));
     if (rows.length === 0) {
+      list.className = 'stack';
       list.innerHTML = `<p class="swatch-note">${topLevel().length === 0 ? 'No notches yet — add one above.' : 'Nothing matches that search.'}</p>`;
       return;
     }
+    // Rows live in one bordered container (GitHub's issue-list shape); the
+    // .notch-list border/separators only make sense when there are rows.
+    list.className = 'notch-list';
     list.innerHTML = rows.map(cardHTML).join('');
+  }
+
+  // The Open/Closed tabs are a shortcut over the same `is:` search token: they
+  // reflect the current query's status and, on click, rewrite it (keeping any
+  // free-text terms). Counts are of top-level notches, which is what the list
+  // shows.
+  function updateFilter(q) {
+    const f = document.getElementById('filter');
+    if (!f) return;
+    const tops = topLevel();
+    const openN = tops.filter((n) => notchStatus(n) === 'open').length;
+    const { statuses } = parseQuery(q);
+    const isClosed = statuses.some((s) => s === 'closed' || s === 'done' || s === 'not_planned');
+    const isOpen = statuses.includes('open') && !isClosed;
+    f.querySelector('[data-status="open"]').setAttribute('aria-pressed', String(isOpen));
+    f.querySelector('[data-status="closed"]').setAttribute('aria-pressed', String(isClosed));
+    f.querySelector('[data-status="open"] .n').textContent = openN;
+    f.querySelector('[data-status="closed"] .n').textContent = tops.length - openN;
+  }
+
+  function setStatusFilter(status) {
+    const input = document.getElementById('search');
+    if (!input) return;
+    const { text } = parseQuery(input.value);
+    input.value = `is:${status}` + (text ? ' ' + text : '');
+    renderCards(input.value);
   }
 
   // ---------- detail view ----------
@@ -328,7 +363,7 @@
 
     const kids = childrenOf(n.id);
     const subCards = kids.length
-      ? kids.map(cardHTML).join('')
+      ? `<div class="notch-list">${kids.map(cardHTML).join('')}</div>`
       : '<span class="swatch-note">No sub-notches.</span>';
 
     const items = n.items.map((i) => `
@@ -345,9 +380,13 @@
 
     const status = notchStatus(n);
     const closeControls = status === 'open'
-      ? `<button class="btn ghost sm" id="close-not-planned" type="button">Not planned</button>
+      ? `<span class="lab open">open</span>
+         <button class="btn ghost sm" id="close-not-planned" type="button">Not planned</button>
          <button class="btn primary sm" id="close-done" type="button">Close as done</button>`
       : `${statusLab(n)}<button class="btn ghost sm" id="reopen" type="button">Reopen</button>`;
+
+    const cs = itemStats(n);
+    const pct = cs.total ? Math.round((cs.done / cs.total) * 100) : 0;
 
     view().innerHTML = `
       <p class="lede">← ${crumbs}</p>
@@ -388,8 +427,9 @@
       </section>
 
       <section class="section">
-        <h2><span>Checklist</span></h2>
+        <h2><span>Checklist</span>${cs.total ? `<span class="count num">${cs.done} of ${cs.total}</span>` : ''}</h2>
         <div class="section-body stack">
+          ${cs.total ? `<div class="progress"><div class="bar"><i style="width:${pct}%"></i></div><span class="pct">${pct}%</span></div>` : ''}
           <div class="stack" id="items">${items || '<span class="swatch-note">No items.</span>'}</div>
           <form class="row" id="item-form" autocomplete="off">
             <input class="input" id="item-text" type="text" placeholder="add an item…" style="flex:1 1 12rem"/>
@@ -473,6 +513,13 @@
 
   function onClick(e) {
     if (e.target.closest('.back')) return; // hash links navigate themselves
+
+    const fbtn = e.target.closest('.filter button[data-status]');
+    if (fbtn) {
+      e.preventDefault();
+      setStatusFilter(fbtn.getAttribute('data-status'));
+      return;
+    }
 
     const delItem = e.target.closest('[data-del-item]');
     if (delItem) {
