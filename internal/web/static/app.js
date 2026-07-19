@@ -198,13 +198,37 @@
     return { total: n.items.length, done: n.items.filter((i) => i.done).length };
   }
 
+  // parseQuery pulls `is:` status tokens (e.g. "is:open", "is:closed") out of a
+  // search string, GitHub-issue-search style, leaving the rest as free text.
+  // "closed" matches any non-open status, mirroring the open/closed split
+  // notches otherwise present to the user.
+  function parseQuery(q) {
+    const tokens = (q || '').trim().split(/\s+/).filter(Boolean);
+    const statuses = [];
+    const text = [];
+    for (const t of tokens) {
+      const m = /^is:(open|closed|done|not_planned)$/i.exec(t);
+      if (m) statuses.push(m[1].toLowerCase());
+      else text.push(t);
+    }
+    return { statuses, text: text.join(' ') };
+  }
+
+  function matchesStatus(n, statuses) {
+    if (!statuses.length) return true;
+    const s = notchStatus(n);
+    return statuses.some((st) => (st === 'closed' ? s !== 'open' : s === st));
+  }
+
   function matches(n, q) {
-    if (!q) return true;
-    q = q.toLowerCase();
-    return n.title.toLowerCase().includes(q)
-      || (n.note || '').toLowerCase().includes(q)
-      || n.tags.some((t) => t.name.toLowerCase().includes(q))
-      || n.items.some((i) => i.text.toLowerCase().includes(q));
+    const { statuses, text } = parseQuery(q);
+    if (!matchesStatus(n, statuses)) return false;
+    if (!text) return true;
+    const t = text.toLowerCase();
+    return n.title.toLowerCase().includes(t)
+      || (n.note || '').toLowerCase().includes(t)
+      || n.tags.some((g) => g.name.toLowerCase().includes(t))
+      || n.items.some((i) => i.text.toLowerCase().includes(t));
   }
 
   function fmtDate(ms) {
@@ -259,6 +283,8 @@
   }
 
   // ---------- list view ----------
+  const DEFAULT_QUERY = 'is:open';
+
   function renderList() {
     view().innerHTML = `
       <p class="lede">Your notches — a mark for anything. Make one, then attach notes, checklist items, tags, and sub-notches.</p>
@@ -274,11 +300,11 @@
       <section class="section">
         <h2><span>Notches</span></h2>
         <div class="section-body stack">
-          <label class="field"><span>Search</span><input class="input" id="search" type="search" placeholder="Filter by title, note, item, or tag…"/></label>
+          <label class="field"><span>Search</span><input class="input" id="search" type="search" value="${esc(DEFAULT_QUERY)}" placeholder="Filter by title, note, item, or tag… (try is:open, is:closed)"/></label>
           <div id="notch-list" class="stack"></div>
         </div>
       </section>`;
-    renderCards('');
+    renderCards(DEFAULT_QUERY);
     const title = document.getElementById('new-title');
     if (title) title.focus();
   }
