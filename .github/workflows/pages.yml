@@ -33,7 +33,9 @@ jobs:
         with:
           go-version-file: go.mod
       - name: assemble site (render the app to index.html)
-        run: go run ./cmd/tally -export ./_site
+        run: |
+          version="v$(jq -r '."."' .release-please-manifest.json)"
+          go run -ldflags "-X github.com/clarkbar-sys/tally/internal/version.Version=$version" ./cmd/tally -export ./_site
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -59,7 +61,9 @@ jobs:
         with:
           go-version-file: go.mod
       - name: assemble site (render the app to index.html)
-        run: go run ./cmd/tally -export ./_site
+        run: |
+          version="v$(jq -r '."."' .release-please-manifest.json)"
+          go run -ldflags "-X github.com/clarkbar-sys/tally/internal/version.Version=$version" ./cmd/tally -export ./_site
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
