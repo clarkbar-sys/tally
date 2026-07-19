@@ -338,7 +338,7 @@
 (function () {
   "use strict";
 
-  var STORE_KEY = "tally-spike-v1";
+  var STORAGE_NAME = "tally-spike-v1";
   var svgNS = "http://www.w3.org/2000/svg";
 
   function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
@@ -350,13 +350,13 @@
 
   function load() {
     try {
-      var raw = localStorage.getItem(STORE_KEY);
+      var raw = localStorage.getItem(STORAGE_NAME);
       if (raw) return JSON.parse(raw);
     } catch (e) {}
     return { tallies: [] };
   }
   function save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) {}
+    try { localStorage.setItem(STORAGE_NAME, JSON.stringify(db)); } catch (e) {}
   }
 
   var db = load();
@@ -510,7 +510,7 @@
       el.addEventListener("click", function () { go({ name: "detail", id: el.getAttribute("data-open") }); });
     });
     document.getElementById("resetBtn").addEventListener("click", function () {
-      if (confirm("Clear all demo data and reseed?")) { localStorage.removeItem(STORE_KEY); db = { tallies: [] }; seedIfEmpty(); render(); }
+      if (confirm("Clear all demo data and reseed?")) { localStorage.removeItem(STORAGE_NAME); db = { tallies: [] }; seedIfEmpty(); render(); }
     });
 
     mountFab(function () {
