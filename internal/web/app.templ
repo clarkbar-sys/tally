@@ -19,6 +19,11 @@ templ AppPage() {
 			<title>tally</title>
 			<meta name="description" content="tally — a local-first container for notes, checklists, and reminders."/>
 			<link rel="icon" type="image/svg+xml" href="static/favicon.svg"/>
+			// Apply the saved theme before the stylesheet paints, so a non-default
+			// theme never flashes the default first. Colours only — safe if it fails.
+			<script>
+				(function(){try{var t=localStorage.getItem('tally.theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+			</script>
 			<link rel="stylesheet" href="static/app.css"/>
 			<script src="static/app.js" defer></script>
 		</head>
@@ -30,7 +35,18 @@ templ AppPage() {
 						<span class="tally-mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span class="slash"></span></span>
 						tally
 					</a>
-					<span class="version" title="running build"><span class="dot" aria-hidden="true"></span>{ versionString() }</span>
+					<div class="topbar-right">
+						<label class="theme-picker">
+							<span class="visually-hidden">Theme</span>
+							<select id="theme-select" aria-label="Theme">
+								<option value="amber-crt">Amber CRT</option>
+								<option value="slate">Slate</option>
+								<option value="paper">Paper</option>
+								<option value="gruvbox">Gruvbox</option>
+							</select>
+						</label>
+						<span class="version" title="running build"><span class="dot" aria-hidden="true"></span>{ versionString() }</span>
+					</div>
 				</header>
 				<div class="cmdline" aria-hidden="true">
 					<span class="prompt">tally&gt;</span>
