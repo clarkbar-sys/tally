@@ -328,12 +328,12 @@
   /* ---------- local-first app ---------- */
   main#view{ display: block; }
   /* a tally in the list is a whole-card link */
-  a.tally-card{ display: block; text-decoration: none; color: var(--ink); transition: border-color .12s ease, box-shadow .12s ease, transform .08s ease; }
-  a.tally-card:hover{ border-left-color: var(--accent-strong); box-shadow: inset 2px 0 0 -1px var(--accent-glow-hot), -1px 0 18px -5px var(--accent-glow), inset 0 0 0 1px rgba(0,0,0,.2); }
-  a.tally-card:active{ transform: translateY(1px); }
-  a.tally-card:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
-  a.tally-card .untitled{ color: var(--ink-faint); font-style: italic; }
-  .tally-card .meta{ display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+  a.notch-card{ display: block; text-decoration: none; color: var(--ink); transition: border-color .12s ease, box-shadow .12s ease, transform .08s ease; }
+  a.notch-card:hover{ border-left-color: var(--accent-strong); box-shadow: inset 2px 0 0 -1px var(--accent-glow-hot), -1px 0 18px -5px var(--accent-glow), inset 0 0 0 1px rgba(0,0,0,.2); }
+  a.notch-card:active{ transform: translateY(1px); }
+  a.notch-card:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  a.notch-card .untitled{ color: var(--ink-faint); font-style: italic; }
+  .notch-card .meta{ display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
 
   /* checklist item = a checkbox row with an inline remove button */
   .check{ position: relative; }
@@ -345,5 +345,6 @@
 
   .back{ text-decoration: none; }
   .back:hover{ text-decoration: underline; }
+  .crumb-sep{ color: var(--ink-faint); opacity: .7; }
 
   @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
