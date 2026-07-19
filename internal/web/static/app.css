@@ -2,13 +2,18 @@
      Hello-world shell + widget gallery. One considered dark theme (no light
      mode, no toggle): an amber-phosphor terminal on near-black glass, tuned
      toward a vintage CRT + Bloomberg-terminal motif — dense monospace chrome,
-     amber text with a soft phosphor bloom, a command line up top and a
-     function-key bar along the bottom. A serif is kept only for display text.
-     Texture is deliberately restrained now: a faint blueprint grid + film grain
-     + gently dialed-down scanlines + vignette over the ground, with a slow CRT
-     beam sweeping the screen. Ember/gold stays the accent; a hot "flash" hue
-     marks live/danger. All motion sits behind prefers-reduced-motion. This file
-     is the styling sandbox — iterate here. */
+     amber text, a command line up top and a status ticker beneath it. A serif
+     is kept only for display text.
+
+     Tuned for daily legibility: this is a ledger you read every day, so the
+     effects budget is spent where it earns its keep. The phosphor bloom is
+     reserved for identity/display text (brand, card titles) rather than smeared
+     across every glyph; the blueprint grid, film grain, scanlines, vignette and
+     CRT beam are all dialled down and slowed so content stays crisp. Bright
+     amber is reserved for primary/interactive surfaces — section headers sit
+     back so hierarchy reads. Ember/gold is the accent; a hot "flash" hue marks
+     live/danger. All motion sits behind prefers-reduced-motion. This file is
+     the styling sandbox — iterate here. */
   :root{
     color-scheme: dark;
 
@@ -17,7 +22,7 @@
     --bg-raised-2: #191108;
     --ink: #f6c983;
     --ink-dim: #b98f4e;
-    --ink-faint: #7c5e33;
+    --ink-faint: #a37e49;
     --line: #2c2110;
     --line-strong: #453515;
 
@@ -37,9 +42,9 @@
     --danger-glow: rgba(255,111,94,.5);
 
     /* Grunge texture knobs */
-    --grid: rgba(255,176,0,.032);
-    --grain-opacity: .05;
-    --scan-opacity: .16;
+    --grid: rgba(255,176,0,.028);
+    --grain-opacity: .035;
+    --scan-opacity: .08;
 
     --good: #4fc586;
     --danger: #ff6f5e;
@@ -76,7 +81,6 @@
     font-size: 14px;
     line-height: 1.45;
     letter-spacing: .01em;
-    text-shadow: var(--phosphor);
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
   }
@@ -91,8 +95,8 @@
   /* scanlines (dialed down) + vignette */
   body::after{
     background:
-      repeating-linear-gradient(0deg, rgba(0,0,0,.34) 0, rgba(0,0,0,.34) 1px, transparent 1px, transparent 4px),
-      radial-gradient(130% 120% at 50% 46%, transparent 58%, rgba(6,4,1,.55) 100%);
+      repeating-linear-gradient(0deg, rgba(0,0,0,.26) 0, rgba(0,0,0,.26) 1px, transparent 1px, transparent 4px),
+      radial-gradient(130% 120% at 50% 46%, transparent 58%, rgba(6,4,1,.5) 100%);
     opacity: var(--scan-opacity);
   }
   /* CRT beam — a slow bright band sweeping down the screen */
@@ -101,27 +105,18 @@
   }
   .crt-beam::before{
     content: ""; position: absolute; left: 0; right: 0; height: 34vh; top: -34vh;
-    background: linear-gradient(180deg, transparent, rgba(255,176,0,.05) 46%, rgba(255,206,92,.09) 50%, rgba(255,176,0,.05) 54%, transparent);
-    animation: beam 7s linear infinite;
+    background: linear-gradient(180deg, transparent, rgba(255,176,0,.028) 46%, rgba(255,206,92,.05) 50%, rgba(255,176,0,.028) 54%, transparent);
+    animation: beam 13s linear infinite;
   }
 
   @keyframes beam{
     0%{ transform: translateY(0); }
     100%{ transform: translateY(134vh); }
   }
-  /* whole-screen amber flicker — very subtle brightness wobble */
-  @keyframes crtHum{
-    0%, 100%{ opacity: 1; }
-    92%{ opacity: 1; }
-    94%{ opacity: .965; }
-    96%{ opacity: 1; }
-    97%{ opacity: .985; }
-    98%{ opacity: 1; }
-  }
+  /* tally-mark phosphor pulse — a gentle glow wobble, no hard blink */
   @keyframes flicker{
-    0%, 17%, 21%, 24%, 55%, 100%{ opacity: 1; filter: drop-shadow(0 0 7px var(--accent-glow-hot)); }
-    18%, 22%{ opacity: .66; filter: drop-shadow(0 0 2px var(--accent-glow)); }
-    23%, 56%{ opacity: .86; filter: drop-shadow(0 0 4px var(--accent-glow)); }
+    0%, 100%{ filter: drop-shadow(0 0 6px var(--accent-glow-hot)); }
+    50%{ filter: drop-shadow(0 0 3px var(--accent-glow)); }
   }
   @keyframes pulseGlow{
     0%, 100%{ box-shadow: 0 0 0 0 var(--flash-glow), 0 4px 16px -6px var(--accent-glow); }
@@ -135,7 +130,7 @@
   h1, h2, h3, p{ margin: 0; }
   a{ color: var(--accent-strong); }
 
-  .app{ max-width: 620px; margin: 0 auto; padding: 0 0 var(--sp-6); animation: crtHum 9s infinite steps(60, end); }
+  .app{ max-width: 620px; margin: 0 auto; padding: 0 0 var(--sp-6); }
 
   /* staggered boot-in for the stacked sections */
   main > .section, main > .lede{ animation: bootIn .32s both ease-out; }
@@ -161,7 +156,7 @@
     box-shadow: 0 1px 0 0 var(--accent-glow), 0 10px 24px -18px var(--accent-glow-hot);
   }
   .brand{ display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: .01em; text-shadow: 0 0 14px var(--accent-glow); }
-  .tally-mark{ display: inline-flex; align-items: flex-end; gap: 3px; height: 20px; color: var(--accent); filter: drop-shadow(0 0 6px var(--accent-glow)); animation: flicker 7s infinite steps(1, end); }
+  .tally-mark{ display: inline-flex; align-items: flex-end; gap: 3px; height: 20px; color: var(--accent); filter: drop-shadow(0 0 6px var(--accent-glow)); animation: flicker 6s ease-in-out infinite; }
   .tally-mark span{ width: 3px; height: 18px; background: currentColor; border-radius: 1px; display: block; }
   .tally-mark span.slash{ width: 20px; height: 3px; align-self: center; margin-left: -20px; transform: rotate(-38deg); border-radius: 1px; }
   .version{
@@ -204,11 +199,16 @@
   /* ---------- sections ---------- */
   .section{ margin-top: var(--sp-5); border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 0 2px 10px -6px rgba(0,0,0,.6); }
   .section > h2{
-    display: flex; align-items: center; justify-content: space-between;
-    background: linear-gradient(180deg, var(--accent-strong), var(--accent) 55%, color-mix(in srgb, var(--accent) 82%, #7a3d00));
-    color: var(--accent-ink);
-    padding: 5px 12px; font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
-    box-shadow: 0 0 16px -3px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.25), inset 0 -2px 4px rgba(90,45,0,.35);
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg-raised-2);
+    color: var(--accent-strong);
+    padding: 7px 12px; font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+    border-bottom: 1px solid var(--line-strong);
+    box-shadow: inset 0 -1px 0 var(--accent-glow);
+  }
+  .section > h2::before{
+    content: ""; width: 6px; height: 6px; flex-shrink: 0; border-radius: 1px;
+    background: var(--accent); box-shadow: 0 0 6px var(--accent-glow-hot);
   }
   .section-body{ padding: var(--sp-4); background: var(--bg-raised); display: flex; flex-direction: column; gap: var(--sp-4); }
   .row{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
@@ -314,7 +314,7 @@
 
   /* ---------- card ---------- */
   .card{ background: var(--bg-raised-2); border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: var(--r); padding: var(--sp-3) var(--sp-4); box-shadow: inset 2px 0 0 -1px var(--accent-glow-hot), -1px 0 14px -6px var(--accent-glow), inset 0 0 0 1px rgba(0,0,0,.2); }
-  .card .title{ font-family: var(--font-display); font-weight: 600; font-size: 17px; text-shadow: 0 1px 0 rgba(0,0,0,.4); }
+  .card .title{ font-family: var(--font-display); font-weight: 600; font-size: 17px; text-shadow: var(--phosphor), 0 1px 0 rgba(0,0,0,.4); }
   .card .meta{ font-size: 12px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .03em; margin-top: 6px; }
   .num{ font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 
