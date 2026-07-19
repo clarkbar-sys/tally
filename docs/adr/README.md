@@ -11,6 +11,10 @@ it with a new ADR rather than editing the old one.
 | [0003](0003-tailnet-integration.md) | Tailnet integration — embed tsnet | Accepted |
 | — | Auth model & access domain | **Deferred** — see [#3](https://github.com/clarkbar-sys/tally/issues/3) |
 
+**Note:** [Epic #1](https://github.com/clarkbar-sys/tally/issues/1) pivoted v1
+to a local-first, no-server build. 0001–0003 stay accepted as the answer for
+*when* a server exists — they don't describe what v1 runs today.
+
 ## Deferred: auth (#3)
 
 App-level auth is parked, not decided — it will get its own ADR when taken up.
