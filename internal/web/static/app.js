@@ -3,44 +3,74 @@
 // tally — local-first client app (epic #1).
 //
 // The whole product runs here in the browser. A "notch" is a generic
-// container — a mark carved on your tally — that you attach things to: a note,
-// a checklist, tags, and other notches (sub-notches, parent/child like GitHub
-// sub-issues). Everything persists in IndexedDB: no server, no network, no
-// auth, no sync. Reload is the test — it all survives, because it lives in this
-// browser.
+// container — a mark carved on your tally — that you edit much like a GitHub
+// issue: a title, a Markdown description (where tasks live as `- [ ]` task
+// lists, checked off inline), tags/labels, sub-notches (parent/child like
+// GitHub sub-issues), and a running thread of comments for the paper trail.
+// Everything persists in IndexedDB: no server, no network, no auth, no sync.
+// Reload is the test — it all survives, because it lives in this browser.
 //
 // (A "tally" — resolving/tallying-up notches — is a later concept; v1 is just
 // the notches and their attachments.)
 //
 // Data model (one object store, `notches`, keyed by id):
-//   Notch { id, title, note, tags:[{name,color}], items:[{id,text,done}],
+//   Notch { id, title, body, tags:[{name,color}],
+//           comments:[{id, body, createdAt}],
 //           parentId:string|null, status:'open'|'done'|'not_planned',
 //           createdAt, updatedAt }
-// A sub-notch is an ordinary notch whose parentId points at its parent. Notes,
-// checklists, and tags are embedded in the notch document. Any notch can be
-// re-parented after the fact (the "Parent" picker on the detail view) to group
-// existing notches — the only restriction is that a notch can't be moved under
-// itself or one of its own descendants, which would make a cycle. A notch is
-// never deleted — it's closed as done or not planned (and can be reopened),
-// same as a GitHub issue. Records from before `status` existed are treated as
-// 'open'.
+// `body` is the Markdown description; tasks are ordinary Markdown task-list
+// items inside it (`- [ ]` / `- [x]`), not a separate structure — mirroring how
+// GitHub issues carry their checklists. A sub-notch is an ordinary notch whose
+// parentId points at its parent. Any notch can be re-parented after the fact
+// (the "Parent" picker on the detail view) to group existing notches — the only
+// restriction is that a notch can't be moved under itself or one of its own
+// descendants, which would make a cycle. A notch is never deleted — it's closed
+// as done or not planned (and can be reopened), same as a GitHub issue.
+//
+// Migration: pre-v3 records carried a plain-text `note` and a structured
+// `items` checklist. On upgrade `note` becomes `body`, and any checklist items
+// are appended to `body` as a Markdown task list, so nothing is lost. Records
+// from before `status` existed are treated as 'open'.
 
 (() => {
   'use strict';
 
   // ---------- IndexedDB ----------
   const DB_NAME = 'tally';
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   const STORE = 'notches';
   const OLD_STORE = 'tallies'; // v1 name, migrated forward
   let _db = null;
 
+  // upgradeNotch brings one stored record up to the current shape in place. It's
+  // idempotent and defensive so it can run over old `tallies` rows, over v2
+  // `notches`, or as a belt-and-braces pass on load. The big move is v2 → v3:
+  // the plain-text `note` becomes the Markdown `body`, and the structured
+  // `items` checklist is folded into that body as a Markdown task list, so a
+  // user's checklist survives the redesign as editable Markdown.
+  function upgradeNotch(rec) {
+    if (rec.parentId === undefined) rec.parentId = null;
+    if (rec.status === undefined) rec.status = 'open';
+    if (rec.body === undefined) rec.body = typeof rec.note === 'string' ? rec.note : '';
+    if (Array.isArray(rec.items) && rec.items.length) {
+      const list = rec.items
+        .map((i) => `- [${i.done ? 'x' : ' '}] ${String(i.text || '').trim()}`)
+        .join('\n');
+      rec.body = rec.body.trim() ? rec.body.replace(/\s+$/, '') + '\n\n' + list : list;
+    }
+    if (!Array.isArray(rec.comments)) rec.comments = [];
+    delete rec.note;
+    delete rec.items;
+    return rec;
+  }
+
   function openDB() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
+      req.onupgradeneeded = (ev) => {
         const db = req.result;
         const upgradeTx = req.transaction;
+        const oldVersion = ev.oldVersion;
         if (!db.objectStoreNames.contains(STORE)) {
           db.createObjectStore(STORE, { keyPath: 'id' });
         }
@@ -49,16 +79,26 @@
         if (db.objectStoreNames.contains(OLD_STORE)) {
           const src = upgradeTx.objectStore(OLD_STORE);
           const dest = upgradeTx.objectStore(STORE);
-          src.openCursor().onsuccess = (ev) => {
-            const cur = ev.target.result;
+          src.openCursor().onsuccess = (e) => {
+            const cur = e.target.result;
             if (cur) {
-              const rec = cur.value;
-              if (rec.parentId === undefined) rec.parentId = null;
-              dest.put(rec);
+              dest.put(upgradeNotch(cur.value));
               cur.continue();
             } else {
               db.deleteObjectStore(OLD_STORE);
             }
+          };
+        } else if (oldVersion >= 1 && oldVersion < 3) {
+          // v2 → v3: rewrite existing notches in place (note → body,
+          // items → Markdown task list, add comments). Rows already migrated
+          // above (from `tallies`) are skipped — this only runs when there was
+          // no old store to carry forward.
+          const store = upgradeTx.objectStore(STORE);
+          store.openCursor().onsuccess = (e) => {
+            const cur = e.target.result;
+            if (!cur) return;
+            cur.update(upgradeNotch(cur.value));
+            cur.continue();
           };
         }
       };
@@ -156,7 +196,9 @@
   }
 
   async function load() {
-    notches = await dbAll();
+    // Normalize in memory too, so any record the upgrade path didn't touch
+    // (e.g. written by an older tab mid-migration) still presents the new shape.
+    notches = (await dbAll()).map(upgradeNotch);
   }
   async function persist(n) {
     n.updatedAt = now();
@@ -170,7 +212,7 @@
   }
   async function createNotch(title, parentId) {
     const n = {
-      id: uid('n_'), title: title.trim(), note: '', tags: [], items: [],
+      id: uid('n_'), title: title.trim(), body: '', tags: [], comments: [],
       parentId: parentId || null, status: 'open', createdAt: now(), updatedAt: now(),
     };
     try {
@@ -188,14 +230,133 @@
     n.status = status;
     await persist(n);
   }
+  async function addComment(n, body) {
+    const text = body.trim();
+    if (!text) return;
+    if (!Array.isArray(n.comments)) n.comments = [];
+    n.comments.push({ id: uid('c_'), body: text, createdAt: now() });
+    await persist(n);
+  }
+  async function deleteComment(n, id) {
+    n.comments = (n.comments || []).filter((c) => c.id !== id);
+    await persist(n);
+  }
 
   // ---------- helpers ----------
   const view = () => document.getElementById('view');
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  function itemStats(n) {
-    return { total: n.items.length, done: n.items.filter((i) => i.done).length };
+  // ---------- Markdown ----------
+  // A small, dependency-free Markdown renderer — the app is client-only and
+  // offline (GitHub Pages), so it can't pull in a library. It covers the subset
+  // that matters for a notch body: headings, task lists (interactive), bullet
+  // and ordered lists, blockquotes, fenced/inline code, links, bold/italic, and
+  // horizontal rules. Everything is HTML-escaped before any markup is added, so
+  // rendering user text can never inject HTML.
+  const TASK_RE = /^(\s*[-*+]\s+\[)([ xX])(\])(\s+)([\s\S]*)$/;
+
+  function mdInline(s) {
+    let t = esc(s);
+    t = t.replace(/`([^`]+)`/g, (m, c) => `<code>${c}</code>`);
+    // links [text](http(s)://url) — scheme-restricted so no javascript: URIs
+    t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      (m, label, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+    t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    t = t.replace(/(^|[^\w_])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
+    return t;
+  }
+
+  // mdRender turns a Markdown string into safe HTML. Task-list items carry a
+  // data-task index (their position among all task items, in document order) so
+  // clicking one can flip the matching `- [ ]` in the source — see toggleTask.
+  function mdRender(src) {
+    const lines = String(src || '').replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    let i = 0, taskIndex = 0;
+    const isList = (l) => /^\s*([-*+]|\d+[.)])\s+/.test(l);
+    const isOrdered = (l) => /^\s*\d+[.)]\s+/.test(l);
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^\s*$/.test(line)) { i++; continue; }
+      if (/^```/.test(line)) {
+        const buf = [];
+        i++;
+        while (i < lines.length && !/^```/.test(lines[i])) { buf.push(lines[i]); i++; }
+        i++; // closing fence
+        out.push(`<pre class="md-code"><code>${esc(buf.join('\n'))}</code></pre>`);
+        continue;
+      }
+      const h = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (h) { const l = h[1].length; out.push(`<h${l} class="md-h md-h${l}">${mdInline(h[2])}</h${l}>`); i++; continue; }
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { out.push('<hr class="md-hr"/>'); i++; continue; }
+      if (/^\s*>\s?/.test(line)) {
+        const buf = [];
+        while (i < lines.length && /^\s*>\s?/.test(lines[i])) { buf.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
+        out.push(`<blockquote class="md-quote">${mdInline(buf.join(' '))}</blockquote>`);
+        continue;
+      }
+      if (isList(line)) {
+        const ordered = isOrdered(line);
+        const items = [];
+        while (i < lines.length && isList(lines[i]) && isOrdered(lines[i]) === ordered) {
+          const body = lines[i].replace(/^\s*([-*+]|\d+[.)])\s+/, '');
+          const task = !ordered && TASK_RE.exec(lines[i]);
+          if (task) {
+            const done = task[2].toLowerCase() === 'x';
+            const idx = taskIndex++;
+            items.push(
+              `<li class="md-task"><label class="check strike md-check">` +
+              `<input type="checkbox" data-task="${idx}"${done ? ' checked' : ''}/>` +
+              `<span class="box">${CHECK_SVG}</span>` +
+              `<span class="lbl">${mdInline(task[5])}</span></label></li>`);
+          } else {
+            items.push(`<li>${mdInline(body)}</li>`);
+          }
+          i++;
+        }
+        const tag = ordered ? 'ol' : 'ul';
+        out.push(`<${tag} class="md-list${ordered ? ' md-ol' : ''}">${items.join('')}</${tag}>`);
+        continue;
+      }
+      const para = [];
+      while (i < lines.length && !/^\s*$/.test(lines[i]) && !isList(lines[i]) &&
+             !/^(#{1,6})\s+/.test(lines[i]) && !/^\s*>\s?/.test(lines[i]) && !/^```/.test(lines[i])) {
+        para.push(lines[i]); i++;
+      }
+      out.push(`<p>${mdInline(para.join('\n')).replace(/\n/g, '<br/>')}</p>`);
+    }
+    return out.join('\n');
+  }
+
+  // toggleTask flips the Nth task checkbox (document order) in a Markdown body,
+  // returning the new body. Mirrors mdRender's task counting exactly.
+  function toggleTask(body, index) {
+    const lines = String(body || '').split('\n');
+    let n = 0;
+    for (let k = 0; k < lines.length; k++) {
+      const m = TASK_RE.exec(lines[k]);
+      if (!m) continue;
+      if (n === index) {
+        const checked = m[2].toLowerCase() === 'x';
+        lines[k] = lines[k].replace(TASK_RE, (_, a, b, c, sp, rest) => a + (checked ? ' ' : 'x') + c + sp + rest);
+        break;
+      }
+      n++;
+    }
+    return lines.join('\n');
+  }
+
+  // taskStats counts the Markdown task-list items in a notch body — the
+  // successor to the old structured checklist, read straight from the text.
+  function taskStats(n) {
+    let total = 0, done = 0;
+    for (const line of String(n.body || '').split('\n')) {
+      const m = TASK_RE.exec(line);
+      if (m) { total++; if (m[2].toLowerCase() === 'x') done++; }
+    }
+    return { total, done };
   }
 
   // parseQuery pulls `is:` status tokens (e.g. "is:open", "is:closed") out of a
@@ -226,9 +387,9 @@
     if (!text) return true;
     const t = text.toLowerCase();
     return n.title.toLowerCase().includes(t)
-      || (n.note || '').toLowerCase().includes(t)
+      || (n.body || '').toLowerCase().includes(t)
       || n.tags.some((g) => g.name.toLowerCase().includes(t))
-      || n.items.some((i) => i.text.toLowerCase().includes(t));
+      || (n.comments || []).some((c) => c.body.toLowerCase().includes(t));
   }
 
   function fmtDate(ms) {
@@ -246,14 +407,14 @@
     let done = 0, total = 0;
     const tags = new Set();
     for (const n of notches) {
-      const s = itemStats(n);
+      const s = taskStats(n);
       done += s.done; total += s.total;
       for (const g of n.tags) tags.add(g.name);
     }
     const open = notches.filter((n) => notchStatus(n) === 'open').length;
     el.innerHTML =
       `<span class="stat"><b>${open}</b> open</span>` +
-      `<span class="stat"><b class="up">${done}</b> of <b>${total}</b> items done</span>` +
+      `<span class="stat"><b class="up">${done}</b> of <b>${total}</b> tasks done</span>` +
       `<span class="stat"><b>${tags.size}</b> tags</span>`;
   }
 
@@ -266,12 +427,14 @@
   }
 
   function cardHTML(n) {
-    const s = itemStats(n);
+    const s = taskStats(n);
     const kids = childrenOf(n.id).length;
+    const comments = (n.comments || []).length;
     const bits = [];
     if (kids) bits.push(`<span class="num">${kids}</span> sub-notch${kids === 1 ? '' : 'es'}`);
-    if (s.total) bits.push(`<span class="num">${s.done}/${s.total}</span> done`);
-    if (n.note) bits.push('note');
+    if (s.total) bits.push(`<span class="num">${s.done}/${s.total}</span> task${s.total === 1 ? '' : 's'}`);
+    if (comments) bits.push(`<span class="num">${comments}</span> comment${comments === 1 ? '' : 's'}`);
+    if ((n.body || '').trim() && !s.total) bits.push('description');
     const meta = bits.length ? bits.join(' · ') : 'empty';
     const tags = statusLab(n) + n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
     return `
@@ -300,7 +463,7 @@
       <section class="section">
         <h2><span>Notches</span></h2>
         <div class="section-body stack">
-          <label class="field"><span>Search</span><input class="input" id="search" type="search" value="${esc(DEFAULT_QUERY)}" placeholder="Filter by title, note, item, or tag… (try is:open, is:closed)"/></label>
+          <label class="field"><span>Search</span><input class="input" id="search" type="search" value="${esc(DEFAULT_QUERY)}" placeholder="Filter by title, description, comment, or tag… (try is:open, is:closed)"/></label>
           <div class="filter" id="filter" role="group" aria-label="Filter by status">
             <button type="button" data-status="open" aria-pressed="true"><span class="fdot" aria-hidden="true"></span>Open <span class="n">0</span></button>
             <button type="button" data-status="closed" aria-pressed="false"><span class="fdot" aria-hidden="true"></span>Closed <span class="n">0</span></button>
@@ -356,6 +519,18 @@
   }
 
   // ---------- detail view ----------
+  // Per-view UI state that isn't part of the saved notch: which tab the
+  // description editor shows (Write vs Preview). Keyed by notch id so opening a
+  // different notch resets it — a fresh/empty body opens in Write, an existing
+  // one in Preview (rendered), the way GitHub shows a saved issue body.
+  let detailUI = { id: null, bodyTab: 'preview' };
+  function bodyTabFor(n) {
+    if (detailUI.id !== n.id) {
+      detailUI = { id: n.id, bodyTab: (n.body || '').trim() ? 'preview' : 'write' };
+    }
+    return detailUI.bodyTab;
+  }
+
   function renderDetail(n) {
     const crumbs = [`<a href="#/" class="back">all notches</a>`]
       .concat(trail(n).map((a) => `<a href="#/n/${esc(a.id)}" class="back">${esc(a.title) || 'untitled'}</a>`))
@@ -365,14 +540,6 @@
     const subCards = kids.length
       ? `<div class="notch-list">${kids.map(cardHTML).join('')}</div>`
       : '<span class="swatch-note">No sub-notches.</span>';
-
-    const items = n.items.map((i) => `
-      <label class="check strike" data-item="${esc(i.id)}">
-        <input type="checkbox" ${i.done ? 'checked' : ''}/>
-        <span class="box">${CHECK_SVG}</span>
-        <span class="lbl">${esc(i.text)}</span>
-        <button class="x" type="button" data-del-item="${esc(i.id)}" aria-label="remove item">&times;</button>
-      </label>`).join('');
 
     const tags = n.tags.map((g) => `
       <span class="chip tag-chip"><span class="lab ${esc(g.color)}">${esc(g.name)}</span>
@@ -385,8 +552,30 @@
          <button class="btn primary sm" id="close-done" type="button">Close as done</button>`
       : `${statusLab(n)}<button class="btn ghost sm" id="reopen" type="button">Reopen</button>`;
 
-    const cs = itemStats(n);
-    const pct = cs.total ? Math.round((cs.done / cs.total) * 100) : 0;
+    // Description: a GitHub-style Write / Preview editor. Preview renders the
+    // Markdown (tasks are interactive there); Write is the raw textarea, saved
+    // as you type. Task progress rides in the header like an issue's checklist.
+    const ts = taskStats(n);
+    const pct = ts.total ? Math.round((ts.done / ts.total) * 100) : 0;
+    const tab = bodyTabFor(n);
+    const rendered = (n.body || '').trim()
+      ? `<div class="md-body" id="body-preview">${mdRender(n.body)}</div>`
+      : '<div class="md-body empty" id="body-preview"><span class="swatch-note">No description yet — switch to Write to add one. Tasks live here as Markdown: <code>- [ ] do a thing</code>.</span></div>';
+    const bodyPane = tab === 'write'
+      ? `<textarea class="textarea md-input" id="body" placeholder="Describe this notch in Markdown. Add tasks with - [ ] …">${esc(n.body || '')}</textarea>`
+      : rendered;
+
+    const comments = (n.comments || []).slice().sort((a, b) => a.createdAt - b.createdAt);
+    const commentList = comments.length
+      ? comments.map((c) => `
+        <article class="comment" data-comment="${esc(c.id)}">
+          <header class="comment-head">
+            <span class="comment-when">${fmtDate(c.createdAt)}</span>
+            <button class="x" type="button" data-del-comment="${esc(c.id)}" aria-label="delete comment">&times;</button>
+          </header>
+          <div class="md-body">${mdRender(c.body)}</div>
+        </article>`).join('')
+      : '<span class="swatch-note">No comments yet — add one below to keep a paper trail.</span>';
 
     view().innerHTML = `
       <p class="lede">← ${crumbs}</p>
@@ -394,7 +583,7 @@
       <section class="section">
         <h2><span>Notch</span><span class="row" style="gap:8px">${closeControls}</span></h2>
         <div class="section-body stack">
-          <label class="field"><span>Title</span><input class="input" id="title" type="text" value="${esc(n.title)}" placeholder="Untitled"/></label>
+          <label class="field"><span>Title</span><input class="input title-input" id="title" type="text" value="${esc(n.title)}" placeholder="Title"/></label>
           <label class="field"><span>Parent</span>
             <select class="select" id="parent">
               <option value=""${n.parentId ? '' : ' selected'}>— top level —</option>
@@ -405,13 +594,14 @@
       </section>
 
       <section class="section">
-        <h2><span>Sub-notches</span></h2>
+        <h2><span>Description</span>${ts.total ? `<span class="count num">${ts.done} of ${ts.total} tasks</span>` : ''}</h2>
         <div class="section-body stack">
-          <div class="stack" id="subs">${subCards}</div>
-          <form class="row" id="sub-form" autocomplete="off">
-            <input class="input" id="sub-title" type="text" placeholder="add a sub-notch…" style="flex:1 1 12rem"/>
-            <button class="btn ghost sm" type="submit">Add sub-notch</button>
-          </form>
+          <div class="seg" id="body-tabs" role="group" aria-label="Description editor">
+            <button type="button" data-tab="write" aria-pressed="${tab === 'write'}">Write</button>
+            <button type="button" data-tab="preview" aria-pressed="${tab === 'preview'}">Preview</button>
+          </div>
+          ${ts.total && tab === 'preview' ? `<div class="progress"><div class="bar"><i style="width:${pct}%"></i></div><span class="pct">${pct}%</span></div>` : ''}
+          ${bodyPane}
         </div>
       </section>
 
@@ -427,21 +617,26 @@
       </section>
 
       <section class="section">
-        <h2><span>Checklist</span>${cs.total ? `<span class="count num">${cs.done} of ${cs.total}</span>` : ''}</h2>
+        <h2><span>Sub-notches</span></h2>
         <div class="section-body stack">
-          ${cs.total ? `<div class="progress"><div class="bar"><i style="width:${pct}%"></i></div><span class="pct">${pct}%</span></div>` : ''}
-          <div class="stack" id="items">${items || '<span class="swatch-note">No items.</span>'}</div>
-          <form class="row" id="item-form" autocomplete="off">
-            <input class="input" id="item-text" type="text" placeholder="add an item…" style="flex:1 1 12rem"/>
-            <button class="btn primary sm" type="submit">Add item</button>
+          <div class="stack" id="subs">${subCards}</div>
+          <form class="row" id="sub-form" autocomplete="off">
+            <input class="input" id="sub-title" type="text" placeholder="add a sub-notch…" style="flex:1 1 12rem"/>
+            <button class="btn ghost sm" type="submit">Add sub-notch</button>
           </form>
         </div>
       </section>
 
       <section class="section">
-        <h2><span>Note</span></h2>
-        <div class="section-body">
-          <textarea class="textarea" id="note" placeholder="Write anything down…">${esc(n.note)}</textarea>
+        <h2><span>Comments</span>${comments.length ? `<span class="count num">${comments.length}</span>` : ''}</h2>
+        <div class="section-body stack">
+          <div class="stack" id="comments">${commentList}</div>
+          <form class="stack" id="comment-form" autocomplete="off">
+            <textarea class="textarea" id="comment-text" placeholder="Leave a comment (Markdown supported)…"></textarea>
+            <div class="row" style="justify-content:flex-end">
+              <button class="btn primary sm" type="submit">Comment</button>
+            </div>
+          </form>
         </div>
       </section>`;
   }
@@ -464,7 +659,7 @@
   }
 
   // ---------- events (delegated on #view) ----------
-  let noteTimer = null, titleTimer = null;
+  let bodyTimer = null, titleTimer = null;
 
   function onSubmit(e) {
     const f = e.target;
@@ -485,14 +680,13 @@
       createNotch(title, parent.id).then(() => renderDetail(parent)).catch(() => {});
       return;
     }
-    if (f.id === 'item-form') {
+    if (f.id === 'comment-form') {
       e.preventDefault();
       const n = currentDetail(); if (!n) return;
-      const box = document.getElementById('item-text');
+      const box = document.getElementById('comment-text');
       const text = box.value.trim();
       if (!text) return;
-      n.items.push({ id: uid('i_'), text, done: false });
-      persist(n).then(() => renderDetail(n));
+      addComment(n, text).then(() => renderDetail(n));
       return;
     }
     if (f.id === 'tag-form') {
@@ -521,13 +715,28 @@
       return;
     }
 
-    const delItem = e.target.closest('[data-del-item]');
-    if (delItem) {
+    // Description Write / Preview toggle. Flush any pending textarea edit into
+    // the notch before switching, so Preview always shows the latest text.
+    const tabBtn = e.target.closest('#body-tabs button[data-tab]');
+    if (tabBtn) {
+      const n = currentDetail(); if (!n) return;
+      const ta = document.getElementById('body');
+      detailUI = { id: n.id, bodyTab: tabBtn.getAttribute('data-tab') };
+      if (ta && ta.value !== (n.body || '')) {
+        clearTimeout(bodyTimer);
+        n.body = ta.value;
+        persist(n).then(() => renderDetail(n));
+      } else {
+        renderDetail(n);
+      }
+      return;
+    }
+
+    const delComment = e.target.closest('[data-del-comment]');
+    if (delComment) {
       e.preventDefault();
       const n = currentDetail(); if (!n) return;
-      const id = delItem.getAttribute('data-del-item');
-      n.items = n.items.filter((i) => i.id !== id);
-      persist(n).then(() => renderDetail(n));
+      deleteComment(n, delComment.getAttribute('data-del-comment')).then(() => renderDetail(n));
       return;
     }
     const delTag = e.target.closest('[data-del-tag]');
@@ -557,6 +766,14 @@
   }
 
   function onChange(e) {
+    // Blur/commit on the description textarea saves immediately, so a pending
+    // debounced edit isn't lost when the next click re-renders the detail view.
+    if (e.target.id === 'body') {
+      const n = currentDetail(); if (!n) return;
+      clearTimeout(bodyTimer);
+      if (n.body !== e.target.value) { n.body = e.target.value; persist(n); }
+      return;
+    }
     if (e.target.id === 'parent') {
       const n = currentDetail(); if (!n) return;
       const val = e.target.value || null;
@@ -565,12 +782,14 @@
       persist(n).then(() => renderDetail(n)); // re-render: breadcrumb + siblings move
       return;
     }
-    const item = e.target.closest('[data-item]');
-    if (item && e.target.matches('input[type=checkbox]')) {
+    // Ticking a task checkbox in the rendered description flips the matching
+    // `- [ ]` in the Markdown source.
+    const taskBox = e.target.closest('.md-body input[data-task]');
+    if (taskBox) {
       const n = currentDetail(); if (!n) return;
-      const id = item.getAttribute('data-item');
-      const i = n.items.find((x) => x.id === id);
-      if (i) { i.done = e.target.checked; persist(n); }
+      const idx = parseInt(taskBox.getAttribute('data-task'), 10);
+      n.body = toggleTask(n.body, idx);
+      persist(n).then(() => renderDetail(n));
     }
   }
 
@@ -579,10 +798,10 @@
       renderCards(e.target.value);
       return;
     }
-    if (e.target.id === 'note') {
+    if (e.target.id === 'body') {
       const n = currentDetail(); if (!n) return;
-      clearTimeout(noteTimer);
-      noteTimer = setTimeout(() => { n.note = e.target.value; persist(n); }, 350);
+      clearTimeout(bodyTimer);
+      bodyTimer = setTimeout(() => { n.body = e.target.value; persist(n); }, 350);
       return;
     }
     if (e.target.id === 'title') {
