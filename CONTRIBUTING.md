@@ -42,6 +42,20 @@ make gitleaks
 make ci         # everything CI runs, locally
 ```
 
+## GitHub Pages (site/)
+
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) deploys the
+static demo mockup under `site/` to the `gh-pages` branch: production at the
+branch root on push to `main`, and a preview under `pr-<number>/` on every
+same-repo pull request that touches `site/`, with a sticky comment linking
+to it.
+
+**One-time repo setting**, required for this to work: **Settings → Pages →
+Build and deployment → Source** must be **"Deploy from a branch"**, branch
+`gh-pages`, folder `/ (root)` — not "GitHub Actions" (the branch doesn't
+exist until the workflow's first run creates it, so this can't be set until
+after that first push to `main`).
+
 ## Fixture policy — synthetic, always
 
 No real API response is ever committed, even redacted. Any credential-shaped
