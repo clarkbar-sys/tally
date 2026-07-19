@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package web holds tally's HTTP handlers and server-rendered ledger UI (#11,
-// #12). Pages are rendered with templ against the canonical model read from the
-// store; the same rendering feeds a static export ([Export]) so a PR preview
-// can publish the real UI, driven by demo data, without a running server.
+// Package web holds tally's HTTP handler and server-rendered UI. The current
+// page is a hello-world design shell — the Ember Terminal theme plus a widget
+// gallery ([Page]) — rendered with templ. The same rendering feeds a static
+// export ([Export]) so GitHub Pages can publish it without a running server.
+// There is no data layer yet; the domain model is being reworked.
 package web
 
 import (
@@ -16,16 +17,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
-
-	"github.com/clarkbar-sys/tally/internal/store"
 )
 
 //go:embed static
 var staticFS embed.FS
 
-// Handler returns the tally HTTP handler backed by st.
-func Handler(st *store.Store) http.Handler {
+// Handler returns the tally HTTP handler.
+func Handler() http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		// staticFS is embedded at build time; a missing subdir is a build bug.
@@ -35,7 +33,7 @@ func Handler(st *store.Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthz)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
-	mux.HandleFunc("/", ledgerHandler(st))
+	mux.HandleFunc("/", pageHandler)
 	return mux
 }
 
@@ -45,46 +43,33 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintln(w, "ok")
 }
 
-// ledgerHandler serves the ledger at "/", honouring the ?q= search filter.
-func ledgerHandler(st *store.Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		v, err := buildLedgerView(r.Context(), st, time.Now(), r.URL.Query().Get("q"))
-		if err != nil {
-			log.Printf("ledger: build view: %v", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := Page(v).Render(r.Context(), w); err != nil {
-			log.Printf("ledger: render: %v", err)
-		}
+// pageHandler serves the design shell at "/".
+func pageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := Page().Render(r.Context(), w); err != nil {
+		log.Printf("page: render: %v", err)
 	}
 }
 
-// Export writes the ledger and its static assets into dir as a self-contained
+// Export writes the page and its static assets into dir as a self-contained
 // static site: index.html plus static/. It renders exactly what the live
-// handler serves (unfiltered), so a published export is a faithful snapshot of
-// the real UI — the basis for the PR preview. Server-driven interactions
-// (search) are inert in the snapshot; the rendered page is otherwise identical.
-func Export(ctx context.Context, st *store.Store, dir string) error {
+// handler serves, so a published export is a faithful snapshot of the real UI —
+// the basis for the GitHub Pages preview.
+func Export(ctx context.Context, dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("web: export: %w", err)
 	}
 
-	v, err := buildLedgerView(ctx, st, time.Now(), "")
-	if err != nil {
-		return fmt.Errorf("web: export: build view: %w", err)
-	}
 	index, err := os.Create(filepath.Join(dir, "index.html"))
 	if err != nil {
 		return fmt.Errorf("web: export: %w", err)
 	}
 	defer index.Close()
-	if err := Page(v).Render(ctx, index); err != nil {
+	if err := Page().Render(ctx, index); err != nil {
 		return fmt.Errorf("web: export: render: %w", err)
 	}
 

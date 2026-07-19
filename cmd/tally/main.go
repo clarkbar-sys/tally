@@ -1,20 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Command tally serves the personal-ledger service on the tailnet.
+// Command tally serves the UI on the tailnet.
 //
 // It joins the tailnet as its own node via tsnet (Hostname "tally") and serves
 // over that identity — so tally is reachable at tally.<tailnet>.ts.net with an
 // access domain separate from the box it runs on (the day-one constraint from
-// #3). On startup it opens the SQLite store, syncs the configured source
-// adapter into it, and serves the browse UI (#11, #12) rendered from that data.
+// #3). The served page is currently the hello-world design shell (theme +
+// widget gallery); the data layer is being reworked.
 //
 // With -export DIR it instead renders the UI to a self-contained static site in
 // DIR and exits, without touching the tailnet — the build step behind the
-// GitHub Pages preview, which publishes the real UI driven by the demo adapter.
-//
-// The provider defaults to "demo" (synthetic data, no credentials) so the app
-// is useful before the SimpleFIN adapter (#9) exists; set TALLY_PROVIDER to
-// switch once other adapters are registered.
+// GitHub Pages preview.
 package main
 
 import (
@@ -33,10 +29,6 @@ import (
 
 	"tailscale.com/tsnet"
 
-	"github.com/clarkbar-sys/tally/internal/ingest"
-	"github.com/clarkbar-sys/tally/internal/source"
-	_ "github.com/clarkbar-sys/tally/internal/source/demo" // registers the "demo" provider
-	"github.com/clarkbar-sys/tally/internal/store"
 	"github.com/clarkbar-sys/tally/internal/version"
 	"github.com/clarkbar-sys/tally/internal/web"
 )
@@ -59,63 +51,18 @@ func main() {
 	}
 }
 
-// openAndSync opens the store at dbPath and performs an initial sync of the
-// configured provider into it, returning the ready store.
-func openAndSync(ctx context.Context, dbPath string) (*store.Store, error) {
-	st, err := store.Open(ctx, dbPath)
-	if err != nil {
-		return nil, err
-	}
-
-	provider := env("TALLY_PROVIDER", "demo")
-	adapter, err := source.Open(ctx, provider)
-	if err != nil {
-		st.Close()
-		return nil, err
-	}
-	res, err := ingest.Apply(ctx, st, adapter, time.Time{})
-	if err != nil {
-		st.Close()
-		return nil, err
-	}
-	log.Printf("synced %q: %d accounts, %d transactions", provider, res.Accounts, res.Transactions)
-	return st, nil
-}
-
-// runExport renders the UI to dir as a static site, then exits. It uses a
-// throwaway database so the export is reproducible and leaves no state behind.
+// runExport renders the UI to dir as a static site, then exits.
 func runExport(dir string) error {
-	ctx := context.Background()
-
-	tmp, err := os.MkdirTemp("", "tally-export-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmp)
-
-	st, err := openAndSync(ctx, filepath.Join(tmp, "export.db"))
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-
-	if err := web.Export(ctx, st, dir); err != nil {
+	if err := web.Export(context.Background(), dir); err != nil {
 		return err
 	}
 	log.Printf("exported static site to %s", dir)
 	return nil
 }
 
-// runServe opens the store, syncs, and serves the UI on the tailnet.
+// runServe serves the UI on the tailnet.
 func runServe() error {
 	log.Printf("starting %s", version.String())
-	ctx := context.Background()
-
-	st, err := openAndSync(ctx, env("TALLY_DB", "/var/lib/tally/tally.db"))
-	if err != nil {
-		return err
-	}
-	defer st.Close()
 
 	hostname := env("TALLY_HOSTNAME", "tally")
 	stateDir := env("TALLY_STATE_DIR", "/var/lib/tally/tsnet")
@@ -145,7 +92,7 @@ func runServe() error {
 	log.Printf("serving %s on the tailnet as %q", scheme, hostname)
 
 	srv := &http.Server{
-		Handler:           web.Handler(st),
+		Handler:           web.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
