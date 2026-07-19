@@ -1,0 +1,162 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package web
+
+// Page is tally's hello-world shell: the Ember Terminal theme plus a gallery of
+// the styled widgets (buttons, checkboxes, radios, toggles, fields, chips,
+// labels, cards, tally-marks). No data layer yet — this is the design sandbox
+// while the model is still in flux. The running version shows top-right.
+templ Page() {
+	<!doctype html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="color-scheme" content="dark"/>
+			<meta name="theme-color" content="#100F0D"/>
+			<title>tally — design</title>
+			<meta name="description" content="tally — Ember Terminal theme + widget gallery."/>
+			<link rel="stylesheet" href="static/app.css"/>
+		</head>
+		<body>
+			<div class="app">
+				<header class="topbar">
+					<div class="brand">
+						<span class="tally-mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span class="slash"></span></span>
+						tally
+					</div>
+					<span class="version" title="running build"><span class="dot" aria-hidden="true"></span>{ versionString() }</span>
+				</header>
+				<main>
+					<p class="lede">Theme + widget sandbox. No data yet — styling lives in <code>static/app.css</code>.</p>
+
+					<section class="section">
+						<h2><span>Buttons</span></h2>
+						<div class="section-body">
+							<div class="row">
+								<button class="btn primary" type="button">Primary</button>
+								<button class="btn ghost" type="button">Ghost</button>
+								<button class="btn danger" type="button">Delete</button>
+								<button class="btn primary sm" type="button">Small</button>
+								<button class="btn ghost" type="button" disabled>Disabled</button>
+							</div>
+						</div>
+					</section>
+
+					<section class="section">
+						<h2><span>Checkboxes</span></h2>
+						<div class="section-body stack">
+							<label class="check strike">
+								<input type="checkbox" checked/>
+								<span class="box">@templ.Raw(iconCheck)</span>
+								<span class="lbl">Confirm electrician for the island outlet</span>
+							</label>
+							<label class="check strike">
+								<input type="checkbox"/>
+								<span class="box">@templ.Raw(iconCheck)</span>
+								<span class="lbl">Pick tile for the backsplash</span>
+							</label>
+							<label class="check strike">
+								<input type="checkbox"/>
+								<span class="box">@templ.Raw(iconCheck)</span>
+								<span class="lbl">Get a second quote on countertops</span>
+							</label>
+						</div>
+					</section>
+
+					<section class="section">
+						<h2><span>Radios</span></h2>
+						<div class="section-body">
+							<div class="row">
+								<label class="radio"><input type="radio" name="hue" checked/><span class="dot"></span><span>Ember</span></label>
+								<label class="radio"><input type="radio" name="hue"/><span class="dot"></span><span>Jade</span></label>
+								<label class="radio"><input type="radio" name="hue"/><span class="dot"></span><span>Iris</span></label>
+							</div>
+						</div>
+					</section>
+
+					<section class="section">
+						<h2><span>Toggles</span></h2>
+						<div class="section-body stack">
+							<label class="switch"><input type="checkbox" checked/><span class="track"></span><span>Reminders roll up to parents</span></label>
+							<label class="switch"><input type="checkbox"/><span class="track"></span><span>Show completed tallies</span></label>
+						</div>
+					</section>
+
+					<section class="section">
+						<h2><span>Fields</span></h2>
+						<div class="section-body stack">
+							<label class="field"><span>Title</span><input class="input" type="text" placeholder="e.g. Kitchen renovation"/></label>
+							<label class="field"><span>Notes</span><textarea class="textarea" placeholder="Write something down…"></textarea></label>
+							<label class="field">
+								<span>Component</span>
+								<select class="select">
+									<option>Sub-tally</option>
+									<option>Checklist</option>
+									<option>Notes</option>
+									<option>Reminder</option>
+								</select>
+							</label>
+						</div>
+					</section>
+
+					<section class="section">
+						<h2><span>Labels &amp; chips</span></h2>
+						<div class="section-body stack">
+							<div class="row">
+								<span class="lab red">urgent</span>
+								<span class="lab amber">waiting</span>
+								<span class="lab green">$$$</span>
+								<span class="lab blue">someday</span>
+								<span class="lab pink">home</span>
+								<span class="lab cyan">travel</span>
+								<button class="lab add" type="button">+ label</button>
+							</div>
+							<div class="row">
+								<span class="chip"># coffee <button class="x" type="button" aria-label="remove">&times;</button></span>
+								<span class="chip"># ritual <button class="x" type="button" aria-label="remove">&times;</button></span>
+								<span class="chip"># groceries <button class="x" type="button" aria-label="remove">&times;</button></span>
+							</div>
+						</div>
+					</section>
+
+					<section class="section">
+						<h2><span>Segmented control</span></h2>
+						<div class="section-body">
+							<div class="seg" role="group" aria-label="Example">
+								<button type="button" aria-pressed="true">Home</button>
+								<button type="button" aria-pressed="false">Detail</button>
+								<button type="button" aria-pressed="false">Labels</button>
+							</div>
+						</div>
+					</section>
+
+					<section class="section">
+						<h2><span>Card</span></h2>
+						<div class="section-body">
+							<div class="card">
+								<div class="title">Kitchen renovation</div>
+								<div class="meta">3 sub-tallies · <span class="num">1/3</span> done</div>
+							</div>
+						</div>
+					</section>
+
+					<section class="section">
+						<h2><span>Tally-marks</span></h2>
+						<div class="section-body">
+							<div class="marks">
+								for i := 1; i <= 12; i++ {
+									<span class="mark-cell">
+										@templ.Raw(tallyMarkSVG(i))
+										<span class="n">{ markCount(i) }</span>
+									</span>
+								}
+							</div>
+						</div>
+					</section>
+				</main>
+				<footer class="foot">tally — Ember Terminal · design sandbox</footer>
+			</div>
+		</body>
+	</html>
+}
