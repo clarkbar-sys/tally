@@ -19,6 +19,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: templ generate (verify up to date)
+        run: |
+          go run github.com/a-h/templ/cmd/templ@v0.3.977 generate
+          if ! git diff --quiet -- '*_templ.go'; then
+            echo "::error::generated templ output is stale (run: make generate, then commit)"
+            git --no-pager diff --stat -- '*_templ.go'
+            exit 1
+          fi
+
       - name: gofmt
         run: |
           unformatted="$(gofmt -l .)"

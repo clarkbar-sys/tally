@@ -47,3 +47,6 @@ coverage.*
 # --- Agent scratch ---------------------------------------------------------
 # Transient git worktrees created by isolated background agents. Never commit.
 .claude/worktrees/
+
+# Static-site export output (cmd/tally -export); built in CI, never committed.
+_site/

@@ -1,21 +1,18 @@
 name: pages
 
-# Deploys site/ to the gh-pages branch: production at the branch root on
-# push to main, and a per-PR preview under pr-<number>/ for same-repo pull
-# requests. Requires a one-time repo setting change -- see CONTRIBUTING.md's
-# "GitHub Pages (site/)" section.
+# Builds the real, server-rendered UI as a static site (cmd/tally -export,
+# driven by the demo adapter -- no credentials, no network) and deploys it to
+# the gh-pages branch: production at the branch root on push to main, and a
+# per-PR preview under pr-<number>/ for same-repo pull requests. The preview is
+# the actual app, not a hand-maintained mockup, so it can never drift from what
+# ships. Requires a one-time repo setting change -- see CONTRIBUTING.md's
+# "GitHub Pages" section.
 
 on:
   push:
     branches: [main]
-    paths:
-      - "site/**"
-      - ".github/workflows/pages.yml"
   pull_request:
     types: [opened, synchronize, reopened, closed]
-    paths:
-      - "site/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 concurrency:
@@ -23,9 +20,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Production: site/ on push to main -> gh-pages branch root. exclude_assets
-  # protects live pr-*/ preview folders from being swept by the same-repo
-  # cleanup this job otherwise does for removed root files.
+  # Production: build the UI and publish it to the gh-pages branch root on push
+  # to main. exclude_assets protects live pr-*/ preview folders from being swept
+  # by the same-repo cleanup this job otherwise does for removed root files.
   deploy-production:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -33,16 +30,22 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: build static site
+        run: go run ./cmd/tally -export ./_site
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
+          publish_dir: ./_site
           keep_files: false
           exclude_assets: "pr-*"
 
-  # Preview: same-repo PRs get site/ published under pr-<number>/, with a
-  # sticky comment linking to it. Forked PRs are skipped -- their
-  # GITHUB_TOKEN is read-only and can't push to gh-pages.
+  # Preview: same-repo PRs get the built UI published under pr-<number>/, with a
+  # sticky comment linking to it. Forked PRs are skipped -- their GITHUB_TOKEN is
+  # read-only and can't push to gh-pages.
   deploy-preview:
     if: >
       github.event_name == 'pull_request' &&
@@ -54,24 +57,26 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: build static site
+        run: go run ./cmd/tally -export ./_site
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
+          publish_dir: ./_site
           destination_dir: pr-${{ github.event.pull_request.number }}
           keep_files: true
       - uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: pages-preview
           message: |
-            Preview: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
+            Preview (real UI, demo data): https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
 
-  # Cleanup: remove a PR's preview folder from gh-pages once it closes, so
-  # stale previews don't accumulate. Only fires if the closing push still
-  # matches the paths filter above -- a PR that touched site/ earlier but not
-  # in its last commit won't trigger this; the orphaned folder is harmless
-  # (a few KB of static HTML) and gets swept up if the same PR number is ever
-  # reused, which GitHub never does.
+  # Cleanup: remove a PR's preview folder from gh-pages once it closes, so stale
+  # previews don't accumulate.
   cleanup-preview:
     if: >
       github.event_name == 'pull_request' &&

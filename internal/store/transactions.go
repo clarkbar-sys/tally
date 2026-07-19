@@ -52,6 +52,33 @@ func (s *Store) UpsertTransaction(ctx context.Context, t model.Transaction) (mod
 	return t, nil
 }
 
+// ListAllTransactions returns every transaction across all accounts, most
+// recent first. It backs the ledger view (#11), which joins each row to its
+// account (from [Store.ListAccounts]) in the caller.
+func (s *Store) ListAllTransactions(ctx context.Context) ([]model.Transaction, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, account_id, provider, provider_transaction_id, status, transacted_at,
+		       posted_at, amount_cents, currency, description, raw_payload, created_at, updated_at
+		FROM transactions ORDER BY transacted_at DESC, id DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("store: list all transactions: %w", err)
+	}
+	defer rows.Close()
+
+	var txns []model.Transaction
+	for rows.Next() {
+		t, err := scanTransaction(rows)
+		if err != nil {
+			return nil, err
+		}
+		txns = append(txns, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: list all transactions: %w", err)
+	}
+	return txns, nil
+}
+
 // GetTransaction returns the transaction with the given internal ID.
 func (s *Store) GetTransaction(ctx context.Context, id int64) (model.Transaction, error) {
 	row := s.db.QueryRowContext(ctx, `

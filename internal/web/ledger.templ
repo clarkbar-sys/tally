@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package web
+
+// Page renders the ledger: account balances (#12) and the transaction list
+// (#11), read-only. Markup mirrors the design mockup so internal/web/static's
+// stylesheet applies unchanged. Annotation controls (tags #13, notes #14,
+// stories #15) are intentionally absent until those issues land.
+templ Page(v LedgerView) {
+	<!doctype html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+			<title>tally</title>
+			<meta name="description" content="Personal ledger with provenance. Tailnet-only."/>
+			<link rel="stylesheet" href="static/app.css"/>
+		</head>
+		<body>
+			<div class="app">
+				<div class="topbar">
+					<div class="brand">
+						<span class="tally-mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span class="slash"></span></span>
+						tally <span class="tagline">a ledger that accumulates meaning</span>
+					</div>
+					<button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle light and dark theme">
+						<span id="themeIcon">🌗</span>
+					</button>
+				</div>
+				<div class="demo-banner">DEMO — synthetic data, not a real ledger</div>
+				<section class="view active" aria-label="Ledger">
+					<div class="accounts-strip">
+						for _, a := range v.Accounts {
+							<div class="account-card">
+								<div class="account-name">{ a.Name }</div>
+								<div class={ "account-balance", templ.KV("negative", a.Negative) }>{ a.Balance }</div>
+								<div class={ "account-sync", templ.KV("stale", a.Stale) }>
+									if a.Stale {
+										<span class="stale-dot" aria-hidden="true"></span>
+									}
+									<span>{ a.SyncLabel }</span>
+								</div>
+							</div>
+						}
+						<div class="account-card total">
+							<div class="account-name">Total</div>
+							<div class="account-balance">{ v.Total }</div>
+							<div class="account-sync"><span>{ accountsAcross(v.AccountCount) }</span></div>
+						</div>
+					</div>
+					<form class="search-row" method="get" role="search">
+						<input
+							type="search"
+							name="q"
+							value={ v.Query }
+							placeholder="Search merchant or account…"
+							aria-label="Search transactions"
+							autocomplete="off"
+						/>
+					</form>
+					if v.Filtered {
+						<div class="result-count">{ searchSummary(v) }</div>
+					}
+					if len(v.Transactions) == 0 {
+						<div class="result-count">No transactions{ emptySuffix(v.Filtered) }.</div>
+					} else {
+						<ul class="tx-list">
+							for _, t := range v.Transactions {
+								<li class="tx">
+									<div class="tx-main">
+										<div class="tx-info">
+											<span class="tx-merchant">
+												{ t.Merchant }
+												if t.Pending {
+													<span class="chip" style="margin-left:6px;">pending</span>
+												}
+											</span>
+											<span class="tx-meta">{ t.Meta }</span>
+										</div>
+										<div class={ "tx-amount", templ.KV("credit", t.Credit) }>{ t.Amount }</div>
+									</div>
+								</li>
+							}
+						</ul>
+					}
+				</section>
+				<footer class="app-footer">
+					tally — { versionString() }. Source on <a href="https://github.com/clarkbar-sys/tally">GitHub</a>.
+				</footer>
+			</div>
+			<script src="static/theme.js"></script>
+		</body>
+	</html>
+}
