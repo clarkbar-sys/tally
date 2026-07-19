@@ -8,3 +8,10 @@
 # forward, but the original commit is already pushed/shared, so it
 # stays in history and the finding still needs suppressing there.
 5369102fa46fbab654c3f3a9094771cb93f51dc5:design/tally-spike.html:generic-api-key:341
+
+# .gitleaksignore:5, one intermediate commit only -- an earlier version
+# of the entry above whose comment reproduced the flagged string
+# verbatim, which re-triggered this same rule against this file. Worded
+# abstractly since; that commit is already pushed/shared, so it stays
+# in history and needs suppressing there too.
+e865f238c995cbc2be102f1f66f0e287a6ba97d1:.gitleaksignore:generic-api-key:5
