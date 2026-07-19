@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version-file: go.mod
           cache: true
 
       - name: gofmt
@@ -38,7 +38,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version-file: go.mod
           cache: true
 
       - name: build
@@ -56,7 +56,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version-file: go.mod
 
       - name: gitleaks
         run: |
