@@ -79,10 +79,14 @@ enforces this.
 - Commits: [Conventional Commits](https://www.conventionalcommits.org/) —
   `type: short imperative subject`, referencing the issue (e.g. `#12`).
   Common types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`.
+  Put the area in a scope, not the type: `feat(web): …`, `chore(design): …`.
   [release-please](https://github.com/googleapis/release-please) parses these
   to version bump and changelog, so the prefix matters: `feat` bumps minor,
   `fix` bumps patch, a `!` after the type (e.g. `feat!:`) or a `BREAKING
   CHANGE:` footer bumps major.
+- **PR titles** are checked by the [`pr-title`](.github/workflows/pr-title.yml)
+  workflow and must be conventional too. We squash-merge, so the PR title is
+  the commit that lands on `main` — the text release-please actually reads.
 - One ADR per irreversible decision; supersede rather than edit.
 - Provider data and tally-owned annotation (tags, notes, stories) stay
   separated at the schema level ([#7](https://github.com/clarkbar-sys/tally/issues/7))
@@ -91,8 +95,18 @@ enforces this.
 ## Releases
 
 [`.github/workflows/release-please.yml`](.github/workflows/release-please.yml)
-runs `release-please` on every push to `main`. It keeps a standing "release
-PR" up to date with the next version bump and changelog, derived from
-Conventional Commit messages since the last release; merging that PR cuts
-the GitHub release and tag. Nothing to do manually beyond writing commits
-with the right prefix.
+runs `release-please` on every push to `main`. Once a releasable commit lands
+(`feat`/`fix`/breaking), it opens a standing "release PR" and keeps it up to
+date with the next version bump and changelog; merging that PR cuts the GitHub
+release and tag. Nothing to do manually beyond writing commits with the right
+prefix.
+
+Note the corollary: with **only** non-releasable commits (`chore`, `docs`,
+`design`, …) there is nothing to release, so release-please stays silent and
+opens no PR — that is expected, not a failure. To cut a specific version out
+of band, land a commit with a `Release-As: X.Y.Z` footer.
+
+For release-please (and the `pr-title` check) to gate merges, add both as
+**required status checks** in the branch-protection rule for `main`, and make
+sure **Settings → Actions → General → "Allow GitHub Actions to create and
+approve pull requests"** is enabled so release-please can open its PR.
