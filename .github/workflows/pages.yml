@@ -35,7 +35,8 @@ jobs:
           go-version-file: go.mod
       - name: assemble site (render the app, keep the spike alongside)
         run: |
-          go run ./cmd/tally -export ./_site
+          version="v$(jq -r '."."' .release-please-manifest.json)"
+          go run -ldflags "-X github.com/clarkbar-sys/tally/internal/version.Version=$version" ./cmd/tally -export ./_site
           cp design/*.html ./_site/
       - uses: peaceiris/actions-gh-pages@v4
         with:
@@ -63,7 +64,8 @@ jobs:
           go-version-file: go.mod
       - name: assemble site (render the app, keep the spike alongside)
         run: |
-          go run ./cmd/tally -export ./_site
+          version="v$(jq -r '."."' .release-please-manifest.json)"
+          go run -ldflags "-X github.com/clarkbar-sys/tally/internal/version.Version=$version" ./cmd/tally -export ./_site
           cp design/*.html ./_site/
       - uses: peaceiris/actions-gh-pages@v4
         with:
