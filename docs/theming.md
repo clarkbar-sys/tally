@@ -12,7 +12,7 @@ refilling the contract, with **no component edits**.
 Themes are a personal, per-browser preference: tally is local-first (see
 [epic #1](https://github.com/clarkbar-sys/tally/issues/1)), so there is no
 account to store a choice on. A theme is selected by setting `data-theme` on
-`<html>`; the default (Amber CRT) also applies with no attribute at all.
+`<html>`; the default (Paper) also applies with no attribute at all.
 
 ## Two tiers of token
 
@@ -46,7 +46,7 @@ tokens either way.
 ## Adding a theme
 
 1. Open [`app.css`](../internal/web/static/app.css) and copy the whole
-   `:root, [data-theme="amber-crt"]` block.
+   `:root, [data-theme="paper"]` block.
 2. Change the selector to `[data-theme="your-name"]`.
 3. Set `color-scheme` (`dark` or `light` — it drives native form controls and
    scrollbars).

@@ -3,19 +3,20 @@
 package web
 
 // AppPage is tally's local-first app shell (epic #1). It renders only the static
-// chrome — the Amber CRT top bar, command line, and status ticker — plus an
-// empty <main> mount point and a <noscript> fallback. Everything else (the
-// tally list, detail views, and all persistence) is driven client-side by
-// static/app.js against browser IndexedDB: no server, no data layer here. The
-// same export feeds GitHub Pages, so the published site is the whole app.
+// chrome — the top bar, command line, and status ticker, themed Paper by
+// default — plus an empty <main> mount point and a <noscript> fallback.
+// Everything else (the tally list, detail views, and all persistence) is
+// driven client-side by static/app.js against browser IndexedDB: no server,
+// no data layer here. The same export feeds GitHub Pages, so the published
+// site is the whole app.
 templ AppPage() {
 	<!doctype html>
 	<html lang="en">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<meta name="color-scheme" content="dark"/>
-			<meta name="theme-color" content="#100F0D"/>
+			<meta name="color-scheme" content="light"/>
+			<meta name="theme-color" content="#ece0c8"/>
 			<title>tally</title>
 			<meta name="description" content="tally — a local-first container for notes, checklists, and reminders."/>
 			<link rel="icon" type="image/svg+xml" href="static/favicon.svg"/>

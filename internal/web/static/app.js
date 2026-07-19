@@ -553,7 +553,7 @@
   // script in <head> applies it before first paint; this wires the picker and
   // keeps the browser-chrome meta tags in step with the active theme.
   const THEME_KEY = 'tally.theme';
-  const DEFAULT_THEME = 'amber-crt';
+  const DEFAULT_THEME = 'paper';
 
   function setMetaContent(name, value) {
     let m = document.querySelector(`meta[name="${name}"]`);
