@@ -1,12 +1,11 @@
 name: pages
 
-# Publishes the tally UI as the site. The Go app renders itself to a static
-# site (go run ./cmd/tally -export), which becomes index.html + static/; the
-# earlier click-through spike under design/ is published alongside by its own
-# name (design/tally-spike.html -> /tally-spike.html). Deployed to the gh-pages
-# branch: production at the branch root on push to main, and a per-PR preview
-# under pr-<number>/ for same-repo pull requests. Requires a one-time repo
-# setting change -- see CONTRIBUTING.md's "GitHub Pages" section.
+# Publishes the tally design spike as the site. The click-through spike under
+# design/ (design/tally-spike.html) is published as index.html -- the first and
+# only page. Deployed to the gh-pages branch: production at the branch root on
+# push to main, and a per-PR preview under pr-<number>/ for same-repo pull
+# requests. Requires a one-time repo setting change -- see CONTRIBUTING.md's
+# "GitHub Pages" section.
 
 on:
   push:
@@ -30,13 +29,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: assemble site (render the app, keep the spike alongside)
+      - name: assemble site (publish the spike as index.html)
         run: |
-          go run ./cmd/tally -export ./_site
-          cp design/*.html ./_site/
+          mkdir -p ./_site
+          cp design/tally-spike.html ./_site/index.html
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -58,13 +54,10 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: assemble site (render the app, keep the spike alongside)
+      - name: assemble site (publish the spike as index.html)
         run: |
-          go run ./cmd/tally -export ./_site
-          cp design/*.html ./_site/
+          mkdir -p ./_site
+          cp design/tally-spike.html ./_site/index.html
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -75,9 +68,7 @@ jobs:
         with:
           header: pages-preview
           message: |
-            Live preview (the app): https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
-
-            The earlier tally-organizer spike is published alongside at [`/tally-spike.html`](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/tally-spike.html).
+            Live preview: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
 
   # Cleanup: remove a PR's preview folder from gh-pages once it closes, so stale
   # previews don't accumulate.
