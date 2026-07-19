@@ -226,8 +226,9 @@
       done += s.done; total += s.total;
       for (const g of n.tags) tags.add(g.name);
     }
+    const open = notches.filter((n) => notchStatus(n) === 'open').length;
     el.innerHTML =
-      `<span class="stat">NOTCHES <b>${notches.length}</b></span>` +
+      `<span class="stat">NOTCHES <b>${open}</b></span>` +
       `<span class="stat">ITEMS <b class="up">${done}</b>/<b>${total}</b></span>` +
       `<span class="stat">TAGS <b>${tags.size}</b></span>`;
   }
