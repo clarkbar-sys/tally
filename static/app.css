@@ -300,6 +300,7 @@
   .lab::before{ content: ""; width: 8px; height: 8px; border-radius: 1px; background: var(--lc); flex-shrink: 0; }
   .lab.red{ --lc: var(--lab-red); } .lab.amber{ --lc: var(--lab-amber); } .lab.green{ --lc: var(--lab-green); }
   .lab.blue{ --lc: var(--lab-blue); } .lab.pink{ --lc: var(--lab-pink); } .lab.cyan{ --lc: var(--lab-cyan); }
+  .lab.gray{ --lc: var(--ink-dim); }
   .lab.add{ --lc: var(--ink-dim); color: var(--ink-dim); border-style: dashed; background: transparent; cursor: pointer; }
   .lab.add::before{ display: none; }
 
