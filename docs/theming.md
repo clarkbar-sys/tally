@@ -52,10 +52,26 @@ tokens either way.
    scrollbars).
 4. Refill **every** slot. Set colours nowhere but here.
 5. For a calm theme, dial the FX budget to the off values above.
+6. Add an `<option>` for it to the picker in
+   [`app.templ`](../internal/web/app.templ).
 
-Select it by setting `data-theme="your-name"` on `<html>`. (An in-app theme
-switcher — persisting the choice to `localStorage` and syncing the
-`<meta name="color-scheme">`/`theme-color` tags — is tracked separately.)
+The picker in the top bar sets `data-theme` on `<html>` and stores the choice
+in `localStorage` (`tally.theme`); an inline `<head>` script re-applies it
+before first paint, and `<meta theme-color>` / `<meta color-scheme>` follow the
+active theme's own `--bg` / `color-scheme` — no per-theme wiring. So a new
+theme is one CSS block plus one `<option>`.
+
+### Light themes
+
+Two "escape" tokens default to the dark-theme literals so existing dark themes
+never set them; a **light** theme overrides both:
+
+| Token | Dark default | Why a light theme overrides it |
+|-------|--------------|--------------------------------|
+| `--terminal-bg` | `#000` | The command-line bar is a black terminal; on a light ground make it a sunken light panel so its `--ink` text reads. |
+| `--lab-ink` | `#fff` | Tag-chip text mixes 22% toward this to lift off a dark ground; on light, set it dark so chip text darkens for contrast. |
+
+See `[data-theme="paper"]` in `app.css` for the reference light theme.
 
 ### Template
 
@@ -111,6 +127,10 @@ switcher — persisting the choice to `localStorage` and syncing the
   --grain-opacity: 0;
   --scan-opacity:  0;
   --beam-opacity:  0;
+
+  /* Escapes — only a light theme needs to set these (see "Light themes") */
+  --terminal-bg:   #000;           /* command-line bar; light panel on a light theme */
+  --lab-ink:       #fff;           /* tag-chip text mixes toward this; dark on light */
 }
 ```
 
