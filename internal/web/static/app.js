@@ -289,28 +289,20 @@
     view().innerHTML = `
       <p class="lede">Your notches — a mark for anything. Make one, then attach notes, checklist items, tags, and sub-notches.</p>
       <section class="section">
-        <h2><span>New notch</span></h2>
-        <div class="section-body">
-          <form class="row" id="new-form" autocomplete="off">
-            <input class="input" id="new-title" type="text" placeholder="e.g. Kitchen renovation, Groceries, Trip to Lisbon" style="flex:1 1 12rem"/>
-            <button class="btn primary" type="submit">Add notch</button>
-          </form>
-        </div>
-      </section>
-      <section class="section">
         <h2><span>Notches</span></h2>
         <div class="section-body stack">
           <label class="field"><span>Search</span><input class="input" id="search" type="search" value="${esc(DEFAULT_QUERY)}" placeholder="Filter by title, note, item, or tag… (try is:open, is:closed)"/></label>
-          <div class="filter" id="filter" role="group" aria-label="Filter by status">
-            <button type="button" data-status="open" aria-pressed="true"><span class="fdot" aria-hidden="true"></span>Open <span class="n">0</span></button>
-            <button type="button" data-status="closed" aria-pressed="false"><span class="fdot" aria-hidden="true"></span>Closed <span class="n">0</span></button>
+          <div class="row" style="align-items:center; flex-wrap:nowrap">
+            <div class="filter" id="filter" role="group" aria-label="Filter by status" style="flex:1 1 auto">
+              <button type="button" data-status="open" aria-pressed="true"><span class="fdot" aria-hidden="true"></span>Open <span class="n">0</span></button>
+              <button type="button" data-status="closed" aria-pressed="false"><span class="fdot" aria-hidden="true"></span>Closed <span class="n">0</span></button>
+            </div>
+            <button class="btn primary sm" id="new-notch" type="button">New notch</button>
           </div>
           <div id="notch-list" class="stack"></div>
         </div>
       </section>`;
     renderCards(DEFAULT_QUERY);
-    const title = document.getElementById('new-title');
-    if (title) title.focus();
   }
 
   function renderCards(q) {
@@ -320,7 +312,7 @@
     const rows = topLevel().filter((n) => matches(n, q));
     if (rows.length === 0) {
       list.className = 'stack';
-      list.innerHTML = `<p class="swatch-note">${topLevel().length === 0 ? 'No notches yet — add one above.' : 'Nothing matches that search.'}</p>`;
+      list.innerHTML = `<p class="swatch-note">${topLevel().length === 0 ? 'No notches yet — hit New notch to start.' : 'Nothing matches that search.'}</p>`;
       return;
     }
     // Rows live in one bordered container (GitHub's issue-list shape); the
@@ -468,14 +460,6 @@
 
   function onSubmit(e) {
     const f = e.target;
-    if (f.id === 'new-form') {
-      e.preventDefault();
-      const input = document.getElementById('new-title');
-      const title = input.value.trim();
-      if (!title) return;
-      createNotch(title, null).then((n) => { location.hash = '#/n/' + n.id; }).catch(() => {});
-      return;
-    }
     if (f.id === 'sub-form') {
       e.preventDefault();
       const parent = currentDetail(); if (!parent) return;
@@ -513,6 +497,12 @@
 
   function onClick(e) {
     if (e.target.closest('.back')) return; // hash links navigate themselves
+
+    if (e.target.closest('#new-notch')) {
+      e.preventDefault();
+      createNotch('', null).then((n) => { location.hash = '#/n/' + n.id; }).catch(() => {});
+      return;
+    }
 
     const fbtn = e.target.closest('.filter button[data-status]');
     if (fbtn) {
