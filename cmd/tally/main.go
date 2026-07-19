@@ -38,6 +38,8 @@ func main() {
 	log.SetPrefix("tally: ")
 
 	exportDir := flag.String("export", "", "render the UI to this directory as a static site and exit (no tailnet)")
+	local := flag.Bool("local", false, "serve the app on a local address instead of the tailnet — for trying tally in a browser")
+	addr := flag.String("addr", "127.0.0.1:8080", "address to bind in -local mode")
 	flag.Parse()
 
 	if *exportDir != "" {
@@ -46,9 +48,43 @@ func main() {
 		}
 		return
 	}
+	if *local {
+		if err := runLocal(*addr); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if err := runServe(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// runLocal serves the app shell over plain HTTP on addr, without the tailnet —
+// the quickest way to open tally in a browser. The app is local-first: all data
+// lives in the browser's IndexedDB, so this only serves static files. Ctrl-C
+// shuts it down.
+func runLocal(addr string) error {
+	log.Printf("starting %s", version.String())
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           web.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	go func() {
+		log.Printf("serving http://%s (local mode) — data stays in your browser", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("serve: %v", err)
+		}
+	}()
+
+	sctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	<-sctx.Done()
+
+	log.Print("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return srv.Shutdown(shutdownCtx)
 }
 
 // runExport renders the UI to dir as a static site, then exits.

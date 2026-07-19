@@ -11,7 +11,7 @@ A [tally stick](https://en.wikipedia.org/wiki/Tally_stick): notched wood, split 
 
 ## Stack
 
-Go + [templ](https://templ.guide/) + HTMX render the app shell today. The earlier finance-ledger build (SQLite store, source-adapter interface, tsnet tailnet deploy) is shelved in git history, not deleted — it returns once a real backend is justified. See [`docs/adr/`](docs/adr/) for the decisions behind it and why.
+Go + [templ](https://templ.guide/) render the static app shell; the app itself is vanilla JavaScript over the browser's [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) — client-only, no server. The earlier finance-ledger build (SQLite store, source-adapter interface, tsnet tailnet deploy, and its templ + HTMX server) is shelved in git history, not deleted — it returns once a real backend is justified. See [`docs/adr/`](docs/adr/) for the decisions behind it and why.
 
 ## Development
 
@@ -20,6 +20,13 @@ Requires Go 1.24+ and [gitleaks](https://github.com/gitleaks/gitleaks).
 ```sh
 make hooks   # enable the pre-push gate (once per clone)
 make ci      # gofmt, vet, build, test, gitleaks
+```
+
+Run the app locally — data stays in your browser via IndexedDB, nothing is
+served but static files:
+
+```sh
+go run ./cmd/tally -local   # http://127.0.0.1:8080
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Security posture: [`docs/security/`](docs/security/).

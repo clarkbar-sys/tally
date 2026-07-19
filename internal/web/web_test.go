@@ -12,10 +12,14 @@ import (
 	"testing"
 )
 
-func TestHealthz(t *testing.T) {
+func get(path string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
-	Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec
+}
 
+func TestHealthz(t *testing.T) {
+	rec := get("/healthz")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
@@ -24,39 +28,46 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
-func TestPageRendersGallery(t *testing.T) {
-	rec := httptest.NewRecorder()
-	Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
-
+func TestRootRendersAppShell(t *testing.T) {
+	rec := get("/")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	body := rec.Body.String()
-	// The running version is shown top-right, and the gallery renders its widgets.
-	for _, want := range []string{versionString(), "tally-mark", `class="check`, "Buttons", "Tally-marks"} {
+	// The shell carries the version, mounts the client app, and loads app.js.
+	for _, want := range []string{versionString(), `id="view"`, "static/app.js", "local-first"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("page body missing %q", want)
+			t.Fatalf("app shell missing %q", want)
 		}
 	}
 }
 
-func TestStaticAssetServed(t *testing.T) {
-	rec := httptest.NewRecorder()
-	Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/app.css", nil))
-
+func TestDesignRendersGallery(t *testing.T) {
+	rec := get("/design")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("static asset status = %d, want %d", rec.Code, http.StatusOK)
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if !strings.Contains(rec.Body.String(), "--bg") {
-		t.Fatal("app.css did not serve expected content")
+	body := rec.Body.String()
+	for _, want := range []string{"tally-mark", `class="check`, "Buttons", "Tally-marks"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("gallery missing %q", want)
+		}
+	}
+}
+
+func TestStaticAssetsServed(t *testing.T) {
+	css := get("/static/app.css")
+	if css.Code != http.StatusOK || !strings.Contains(css.Body.String(), "--bg") {
+		t.Fatalf("app.css not served correctly (status %d)", css.Code)
+	}
+	js := get("/static/app.js")
+	if js.Code != http.StatusOK || !strings.Contains(js.Body.String(), "indexedDB") {
+		t.Fatalf("app.js not served correctly (status %d)", js.Code)
 	}
 }
 
 func TestUnknownPathNotFound(t *testing.T) {
-	rec := httptest.NewRecorder()
-	Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nope", nil))
-
-	if rec.Code != http.StatusNotFound {
+	if rec := get("/nope"); rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
@@ -74,7 +85,9 @@ func TestExportWritesSelfContainedSite(t *testing.T) {
 	if !strings.Contains(string(index), versionString()) {
 		t.Fatal("exported index.html missing version")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "static", "app.css")); err != nil {
-		t.Fatalf("exported static/app.css missing: %v", err)
+	for _, asset := range []string{"app.css", "app.js"} {
+		if _, err := os.Stat(filepath.Join(dir, "static", asset)); err != nil {
+			t.Fatalf("exported static/%s missing: %v", asset, err)
+		}
 	}
 }

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package web holds tally's HTTP handler and server-rendered UI. The current
-// page is a hello-world design shell — the Ember Terminal theme plus a widget
-// gallery ([Page]) — rendered with templ. The same rendering feeds a static
-// export ([Export]) so GitHub Pages can publish it without a running server.
-// There is no data layer yet; the domain model is being reworked.
+// Package web serves tally's local-first app shell and its static assets. The
+// app itself (data model, persistence, all interaction) runs client-side in
+// static/app.js against browser IndexedDB — there is no server-side data layer.
+// This package renders the static shell ([AppPage]) and serves static/, and the
+// same rendering feeds a static export ([Export]) so GitHub Pages publishes the
+// whole app. The widget gallery ([GalleryPage]) is kept at /design as a living
+// style reference.
 package web
 
 import (
@@ -22,7 +24,8 @@ import (
 //go:embed static
 var staticFS embed.FS
 
-// Handler returns the tally HTTP handler.
+// Handler returns the tally HTTP handler. It serves the app shell and static
+// assets only — persistence is client-side, so there are no data endpoints.
 func Handler() http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
@@ -31,9 +34,10 @@ func Handler() http.Handler {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", healthz)
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
-	mux.HandleFunc("/", pageHandler)
+	mux.HandleFunc("GET /healthz", healthz)
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
+	mux.HandleFunc("GET /design", page(GalleryPage()))
+	mux.HandleFunc("GET /{$}", page(AppPage()))
 	return mux
 }
 
@@ -43,22 +47,22 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintln(w, "ok")
 }
 
-// pageHandler serves the design shell at "/".
-func pageHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := Page().Render(r.Context(), w); err != nil {
-		log.Printf("page: render: %v", err)
+// page returns a handler that renders a templ component as HTML.
+func page(c interface {
+	Render(context.Context, io.Writer) error
+}) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := c.Render(r.Context(), w); err != nil {
+			log.Printf("web: render: %v", err)
+		}
 	}
 }
 
-// Export writes the page and its static assets into dir as a self-contained
-// static site: index.html plus static/. It renders exactly what the live
-// handler serves, so a published export is a faithful snapshot of the real UI —
-// the basis for the GitHub Pages preview.
+// Export writes the app shell and its static assets into dir as a
+// self-contained static site: index.html plus static/. Because the app is
+// client-only, the published export is the whole product — GitHub Pages serves
+// it and the browser's IndexedDB holds the data.
 func Export(ctx context.Context, dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("web: export: %w", err)
@@ -69,7 +73,7 @@ func Export(ctx context.Context, dir string) error {
 		return fmt.Errorf("web: export: %w", err)
 	}
 	defer index.Close()
-	if err := Page().Render(ctx, index); err != nil {
+	if err := AppPage().Render(ctx, index); err != nil {
 		return fmt.Errorf("web: export: render: %w", err)
 	}
 
