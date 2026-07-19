@@ -115,7 +115,4 @@ func TestExportWritesSelfContainedSite(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "static", "app.css")); err != nil {
 		t.Fatalf("exported static/app.css missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "static", "theme.js")); err != nil {
-		t.Fatalf("exported static/theme.js missing: %v", err)
-	}
 }

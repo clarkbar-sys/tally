@@ -12,6 +12,8 @@ templ Page(v LedgerView) {
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+			<meta name="color-scheme" content="dark"/>
+			<meta name="theme-color" content="#100F0D"/>
 			<title>tally</title>
 			<meta name="description" content="Personal ledger with provenance. Tailnet-only."/>
 			<link rel="stylesheet" href="static/app.css"/>
@@ -23,9 +25,6 @@ templ Page(v LedgerView) {
 						<span class="tally-mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span class="slash"></span></span>
 						tally <span class="tagline">a ledger that accumulates meaning</span>
 					</div>
-					<button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle light and dark theme">
-						<span id="themeIcon">🌗</span>
-					</button>
 				</div>
 				<div class="demo-banner">DEMO — synthetic data, not a real ledger</div>
 				<section class="view active" aria-label="Ledger">
@@ -88,7 +87,6 @@ templ Page(v LedgerView) {
 					tally — { versionString() }. Source on <a href="https://github.com/clarkbar-sys/tally">GitHub</a>.
 				</footer>
 			</div>
-			<script src="static/theme.js"></script>
 		</body>
 	</html>
 }
