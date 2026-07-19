@@ -1,0 +1,10 @@
+# Confirmed false positives, one fingerprint per line. Do not add an entry
+# without leaving a comment on the line above explaining why it's safe.
+# Run locally: gitleaks detect --config .gitleaks.toml --redact
+
+# design/tally-spike.html:341 -- `STORE_KEY = "tally-spike-v1"`, the
+# localStorage namespace for the click-through design spike, not a
+# credential. Later commit ef5d732 renamed it to STORAGE_NAME, but the
+# original commit is already pushed/shared, so it stays in history and
+# the finding still needs suppressing there.
+5369102fa46fbab654c3f3a9094771cb93f51dc5:design/tally-spike.html:generic-api-key:341
