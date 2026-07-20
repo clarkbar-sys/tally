@@ -21,9 +21,11 @@
 //
 // Data model (`notches`, an in-memory array keyed by id):
 //   Notch { id, title, body, tags:[{name,color}],
-//           comments:[{id, body, createdAt}],
+//           events:[Event],
 //           parentId:string|null, status:'open'|'done'|'not_planned',
 //           createdAt, updatedAt }
+//   Event { id, kind, at, ...payload }   kind ∈ opened | comment | labeled |
+//           unlabeled | task | moved | sub | renamed | status
 // `body` is the Markdown description; tasks are ordinary Markdown task-list
 // items inside it (`- [ ]` / `- [x]`), not a separate structure — mirroring how
 // GitHub issues carry their checklists. A sub-notch is an ordinary notch whose
@@ -32,6 +34,14 @@
 // restriction is that a notch can't be moved under itself or one of its own
 // descendants, which would make a cycle. A notch is never deleted — it's closed
 // as done or not planned (and can be reopened), same as a GitHub issue.
+//
+// EVENT LOG: every notch keeps an append-only `events` timeline — the detail
+// view IS that timeline, GitHub-issue style. Labelling, unlabelling, ticking a
+// task, commenting, moving, renaming and status changes all append an event, and
+// nothing is ever removed: a "deleted" comment is only flagged `deleted:true`,
+// so its tombstone stays in the record. Comments live solely as `comment` events
+// (there is no separate comments array). The `opened` event anchors the top of
+// the log and hosts the live Markdown description.
 
 (() => {
   'use strict';
@@ -96,7 +106,7 @@
   function demoSeed() {
     const t = now();
     const mk = (o) => Object.assign(
-      { id: uid('n_'), title: '', body: '', tags: [], comments: [],
+      { id: uid('n_'), title: '', body: '', tags: [], events: [],
         parentId: null, status: 'open', createdAt: t, updatedAt: t }, o);
     return [
       mk({
@@ -114,7 +124,14 @@
           'Use **Reset demo** in the bar above to wipe back to this starting point.',
         ].join('\n'),
         tags: [{ name: 'demo', color: 'blue' }],
-        comments: [{ id: 'c_demo_1', body: 'Notches keep a comment thread, like a GitHub issue.', createdAt: t }],
+        // A ready-made timeline so the event log has a story to tell on open.
+        events: [
+          { id: 'e_w1', kind: 'opened', at: t - 5000 },
+          { id: 'e_w2', kind: 'labeled', at: t - 4000, name: 'demo', color: 'blue' },
+          { id: 'e_w3', kind: 'comment', at: t - 3000, body: 'Notches keep a permanent event log, like a GitHub issue — labels, comments, tasks, status. Nothing you do here ever disappears from the record.' },
+          { id: 'e_w4', kind: 'comment', at: t - 2000, deleted: true, body: 'Even a deleted comment stays as a struck-through tombstone.' },
+          { id: 'e_w5', kind: 'task', at: t - 1000, text: '(this one is already done)', done: true },
+        ],
       }),
       mk({
         id: 'n_demo_sub',
@@ -122,6 +139,7 @@
         body: 'Notches nest — this one lives under “Welcome to tally”.',
         parentId: 'n_demo_welcome',
         updatedAt: t - 1000,
+        events: [{ id: 'e_s1', kind: 'opened', at: t - 1000 }],
       }),
       mk({
         id: 'n_demo_list',
@@ -129,6 +147,11 @@
         body: '- [ ] Milk\n- [ ] Coffee\n- [x] Bread',
         tags: [{ name: 'errand', color: 'green' }],
         updatedAt: t - 2000,
+        events: [
+          { id: 'e_l1', kind: 'opened', at: t - 3000 },
+          { id: 'e_l2', kind: 'labeled', at: t - 2500, name: 'errand', color: 'green' },
+          { id: 'e_l3', kind: 'task', at: t - 2000, text: 'Bread', done: true },
+        ],
       }),
     ];
   }
@@ -144,29 +167,45 @@
     ticker();
     return Promise.resolve();
   }
+  // logEvent appends one entry to a notch's timeline. It only mutates the array;
+  // callers persist() afterwards to stamp the time and re-render. This is the one
+  // seam every recorded action goes through, so the log stays append-only.
+  function logEvent(n, kind, data) {
+    if (!Array.isArray(n.events)) n.events = [];
+    const ev = Object.assign({ id: uid('e_'), kind, at: now() }, data || {});
+    n.events.push(ev);
+    return ev;
+  }
   function createNotch(title, parentId) {
+    const t = now();
     const n = {
-      id: uid('n_'), title: title.trim(), body: '', tags: [], comments: [],
-      parentId: parentId || null, status: 'open', createdAt: now(), updatedAt: now(),
+      id: uid('n_'), title: title.trim(), body: '', tags: [],
+      events: [{ id: uid('e_'), kind: 'opened', at: t }],
+      parentId: parentId || null, status: 'open', createdAt: t, updatedAt: t,
     };
     notches.push(n);
+    // Creating a sub-notch is itself an event on the parent's timeline.
+    if (parentId) { const p = byId(parentId); if (p) logEvent(p, 'sub', { subId: n.id, title: n.title }); }
     ticker();
     return Promise.resolve(n);
   }
   const notchStatus = (n) => n.status || 'open';
   async function setStatus(n, status) {
     n.status = status;
+    logEvent(n, 'status', { status });
     await persist(n);
   }
   async function addComment(n, body) {
     const text = body.trim();
     if (!text) return;
-    if (!Array.isArray(n.comments)) n.comments = [];
-    n.comments.push({ id: uid('c_'), body: text, createdAt: now() });
+    logEvent(n, 'comment', { body: text });
     await persist(n);
   }
+  // "Deleting" a comment never removes it — it flags the event so the timeline
+  // renders a struck-through tombstone. The record keeps its full history.
   async function deleteComment(n, id) {
-    n.comments = (n.comments || []).filter((c) => c.id !== id);
+    const ev = (n.events || []).find((e) => e.id === id && e.kind === 'comment');
+    if (ev) ev.deleted = true;
     await persist(n);
   }
 
@@ -287,6 +326,23 @@
     return { total, done };
   }
 
+  // taskInfo returns the {text, done} of the Nth task-list item (document order),
+  // so a toggle can record which task it flipped in the event log. Counts exactly
+  // as mdRender/toggleTask do.
+  function taskInfo(body, index) {
+    let n = 0;
+    for (const line of String(body || '').split('\n')) {
+      const m = TASK_RE.exec(line);
+      if (!m) continue;
+      if (n === index) return { text: m[5].trim(), done: m[2].toLowerCase() === 'x' };
+      n++;
+    }
+    return null;
+  }
+
+  // Live (non-deleted) comments on a notch, oldest → newest.
+  const liveComments = (n) => (n.events || []).filter((e) => e.kind === 'comment' && !e.deleted);
+
   // parseQuery pulls `is:` status tokens (e.g. "is:open", "is:closed") out of a
   // search string, GitHub-issue-search style, leaving the rest as free text.
   // "closed" matches any non-open status, mirroring the open/closed split
@@ -317,7 +373,7 @@
     return n.title.toLowerCase().includes(t)
       || (n.body || '').toLowerCase().includes(t)
       || n.tags.some((g) => g.name.toLowerCase().includes(t))
-      || (n.comments || []).some((c) => c.body.toLowerCase().includes(t));
+      || liveComments(n).some((c) => c.body.toLowerCase().includes(t));
   }
 
   function fmtDate(ms) {
@@ -357,7 +413,7 @@
   function cardHTML(n) {
     const s = taskStats(n);
     const kids = childrenOf(n.id).length;
-    const comments = (n.comments || []).length;
+    const comments = liveComments(n).length;
     const bits = [];
     if (kids) bits.push(`<span class="num">${kids}</span> sub-notch${kids === 1 ? '' : 'es'}`);
     if (s.total) bits.push(`<span class="num">${s.done}/${s.total}</span> task${s.total === 1 ? '' : 's'}`);
@@ -451,30 +507,102 @@
     return detailUI.bodyTab;
   }
 
-  function renderDetail(n) {
-    const crumbs = [`<a href="#/" class="back">all notches</a>`]
-      .concat(trail(n).map((a) => `<a href="#/n/${esc(a.id)}" class="back">${esc(a.title) || 'untitled'}</a>`))
-      .join('<span class="crumb-sep"> / </span>');
+  // The title as it stood when the detail view was last rendered — the baseline a
+  // blur compares against to record a `renamed` event (and to skip the initial
+  // naming of a fresh, still-untitled notch, which isn't a rename).
+  let titleBaseline = '';
 
-    const kids = childrenOf(n.id);
-    const subCards = kids.length
-      ? `<div class="notch-list">${kids.map(cardHTML).join('')}</div>`
-      : '<span class="swatch-note">No sub-notches.</span>';
+  // ---------- timeline ----------
+  // The detail view is one append-only event log. Small events are one-liners on
+  // a shared rail; comments and the opening description are full cards. Icons are
+  // inline SVG (the app is offline, no icon font). Everything a notch records maps
+  // to one of the kinds below.
+  const svgIcon = (inner, sw) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw || 2}" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+  const ICON = {
+    pencil: svgIcon('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
+    tag: svgIcon('<path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.4" fill="currentColor" stroke="none"/>'),
+    untag: svgIcon('<path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8Z"/><path d="M2 2l20 20"/>'),
+    check: svgIcon('<path d="M4 12l5 5L20 6"/>', 2.4),
+    box: svgIcon('<rect x="4" y="4" width="16" height="16" rx="2.5"/>'),
+    comment: svgIcon('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/>'),
+    trash: svgIcon('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/>'),
+    move: svgIcon('<path d="M15 10l5 5-5 5"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/>'),
+    branch: svgIcon('<path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>'),
+    done: svgIcon('<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>'),
+    skip: svgIcon('<circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/>'),
+    reopen: svgIcon('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>'),
+    dot: svgIcon('<circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/>'),
+  };
 
-    const tags = n.tags.map((g) => `
-      <span class="chip tag-chip"><span class="lab ${esc(g.color)}">${esc(g.name)}</span>
-        <button class="x" type="button" data-del-tag="${esc(g.name)}" aria-label="remove tag">&times;</button></span>`).join('');
+  const labChip = (name, color) => `<span class="lab ${esc(color || 'gray')}">${esc(name)}</span>`;
 
-    const status = notchStatus(n);
-    const closeControls = status === 'open'
-      ? `<span class="lab open">open</span>
-         <button class="btn ghost sm" id="close-not-planned" type="button">Not planned</button>
-         <button class="btn primary sm" id="close-done" type="button">Close as done</button>`
-      : `${statusLab(n)}<button class="btn ghost sm" id="reopen" type="button">Reopen</button>`;
+  function statePill(n) {
+    const s = notchStatus(n);
+    if (s === 'done') return `<span class="state done">${ICON.done} Done</span>`;
+    if (s === 'not_planned') return `<span class="state np">${ICON.skip} Not planned</span>`;
+    return `<span class="state open">${ICON.dot} Open</span>`;
+  }
 
-    // Description: a GitHub-style Write / Preview editor. Preview renders the
-    // Markdown (tasks are interactive there); Write is the raw textarea, saved
-    // as you type. Task progress rides in the header like an issue's checklist.
+  // A one-line event on the rail: icon + "you <did something> · <when>".
+  function evSmall(cls, icon, inner, at) {
+    return `<div class="ev small ${cls}"><span class="icon">${icon}</span>` +
+      `<span class="line"><b>you</b> ${inner} <span class="when">${fmtDate(at)}</span></span></div>`;
+  }
+
+  // A comment card — or, once deleted, its tombstone: the body stays, struck
+  // through and dimmed, so the record is never actually lost.
+  function commentEventHTML(ev) {
+    const when = fmtDate(ev.at);
+    if (ev.deleted) {
+      return '<div class="ev card deleted danger">' +
+        `<span class="icon">${ICON.trash}</span>` +
+        '<div class="box"><div class="box-head">' +
+        `<span class="tombstone">deleted comment</span><span class="when">${when}</span></div>` +
+        `<div class="box-body md-body">${mdRender(ev.body)}</div></div></div>`;
+    }
+    return '<div class="ev card">' +
+      `<span class="icon">${ICON.comment}</span>` +
+      '<div class="box"><div class="box-head"><span><b>you</b> commented</span>' +
+      `<span class="row" style="gap:8px;align-items:center"><span class="when">${when}</span>` +
+      `<button class="x" type="button" data-del-comment="${esc(ev.id)}" aria-label="delete comment">&times;</button></span></div>` +
+      `<div class="box-body md-body">${mdRender(ev.body)}</div></div></div>`;
+  }
+
+  function eventHTML(n, ev) {
+    switch (ev.kind) {
+      case 'comment': return commentEventHTML(ev);
+      case 'labeled': return evSmall('accent', ICON.tag, `added the ${labChip(ev.name, ev.color)} label`, ev.at);
+      case 'unlabeled': return evSmall('', ICON.untag, `removed the ${labChip(ev.name, ev.color)} label`, ev.at);
+      case 'task': return evSmall(ev.done ? 'good' : '', ev.done ? ICON.check : ICON.box,
+        `${ev.done ? 'checked off' : 'unchecked'} <b>${esc(ev.text || 'a task')}</b>`, ev.at);
+      case 'moved': {
+        const to = ev.toId ? byId(ev.toId) : null;
+        const label = ev.toId
+          ? `moved this under <b>${esc((to ? to.title : ev.toTitle) || 'untitled')}</b>`
+          : 'moved this to the top level';
+        return evSmall('', ICON.move, label, ev.at);
+      }
+      case 'sub': {
+        const child = byId(ev.subId);
+        const title = (child ? child.title : ev.title) || 'untitled';
+        return evSmall('', ICON.branch, `added the sub-notch <a href="#/n/${esc(ev.subId)}" class="ev-link">${esc(title)}</a>`, ev.at);
+      }
+      case 'renamed': return evSmall('', ICON.pencil, `renamed this to <b>${esc(ev.to || 'untitled')}</b>`, ev.at);
+      case 'status': {
+        if (ev.status === 'done') return evSmall('good', ICON.done, 'closed this notch as <b>done</b>', ev.at);
+        if (ev.status === 'not_planned') return evSmall('', ICON.skip, 'closed this notch as <b>not planned</b>', ev.at);
+        return evSmall('accent', ICON.reopen, 'reopened this notch', ev.at);
+      }
+      default: return '';
+    }
+  }
+
+  // The opening card anchors the log and hosts the live description — a
+  // Write/Preview Markdown editor, the way a GitHub issue body sits atop its
+  // timeline. Tasks are interactive in Preview; progress rides in the card head.
+  function openingCardHTML(n) {
+    const opened = (n.events || []).find((e) => e.kind === 'opened');
+    const when = fmtDate(opened ? opened.at : n.createdAt);
     const ts = taskStats(n);
     const pct = ts.total ? Math.round((ts.done / ts.total) * 100) : 0;
     const tab = bodyTabFor(n);
@@ -484,18 +612,47 @@
     const bodyPane = tab === 'write'
       ? `<textarea class="textarea md-input" id="body" placeholder="Describe this notch in Markdown. Add tasks with - [ ] …">${esc(n.body || '')}</textarea>`
       : rendered;
+    return '<div class="ev card accent opening">' +
+      `<span class="icon">${ICON.pencil}</span>` +
+      '<div class="box"><div class="box-head"><span><b>you</b> opened this notch</span>' +
+      `<span class="row" style="gap:12px;align-items:center">${ts.total ? `<span class="when">${ts.done}/${ts.total} tasks</span>` : ''}<span class="when">${when}</span></span></div>` +
+      '<div class="box-body stack">' +
+      '<div class="seg" id="body-tabs" role="group" aria-label="Description editor">' +
+      `<button type="button" data-tab="write" aria-pressed="${tab === 'write'}">Write</button>` +
+      `<button type="button" data-tab="preview" aria-pressed="${tab === 'preview'}">Preview</button></div>` +
+      `${ts.total && tab === 'preview' ? `<div class="progress"><div class="bar"><i style="width:${pct}%"></i></div><span class="pct">${pct}%</span></div>` : ''}` +
+      `${bodyPane}</div></div></div>`;
+  }
 
-    const comments = (n.comments || []).slice().sort((a, b) => a.createdAt - b.createdAt);
-    const commentList = comments.length
-      ? comments.map((c) => `
-        <article class="comment" data-comment="${esc(c.id)}">
-          <header class="comment-head">
-            <span class="comment-when">${fmtDate(c.createdAt)}</span>
-            <button class="x" type="button" data-del-comment="${esc(c.id)}" aria-label="delete comment">&times;</button>
-          </header>
-          <div class="md-body">${mdRender(c.body)}</div>
-        </article>`).join('')
-      : '<span class="swatch-note">No comments yet — add one below to keep a paper trail.</span>';
+  function renderDetail(n) {
+    titleBaseline = n.title || '';
+
+    const crumbs = [`<a href="#/" class="back">all notches</a>`]
+      .concat(trail(n).map((a) => `<a href="#/n/${esc(a.id)}" class="back">${esc(a.title) || 'untitled'}</a>`))
+      .join('<span class="crumb-sep"> / </span>');
+
+    const kids = childrenOf(n.id);
+    const subCards = kids.length
+      ? `<div class="notch-list">${kids.map(cardHTML).join('')}</div>`
+      : '<span class="swatch-note">No sub-notches.</span>';
+
+    // Current labels — the live set, editable here; the log below keeps the full
+    // history of what was ever added or removed.
+    const tags = n.tags.map((g) => `
+      <span class="chip tag-chip"><span class="lab ${esc(g.color)}">${esc(g.name)}</span>
+        <button class="x" type="button" data-del-tag="${esc(g.name)}" aria-label="remove label">&times;</button></span>`).join('');
+
+    const status = notchStatus(n);
+    const closeControls = status === 'open'
+      ? `${statePill(n)}
+         <button class="btn ghost sm" id="close-not-planned" type="button">Not planned</button>
+         <button class="btn primary sm" id="close-done" type="button">Close as done</button>`
+      : `${statePill(n)}<button class="btn ghost sm" id="reopen" type="button">Reopen</button>`;
+
+    // The timeline: the opening card (with the live description) first, then every
+    // other event in chronological order. Deleted comments stay as tombstones.
+    const events = (n.events || []).slice().sort((a, b) => a.at - b.at);
+    const rest = events.filter((e) => e.kind !== 'opened').map((e) => eventHTML(n, e)).join('');
 
     view().innerHTML = `
       <p class="lede">← ${crumbs}</p>
@@ -510,34 +667,19 @@
               ${moveTargets(n).map((t) => `<option value="${esc(t.id)}"${t.id === n.parentId ? ' selected' : ''}>${esc(pathLabel(t))}</option>`).join('')}
             </select>
           </label>
-        </div>
-      </section>
-
-      <section class="section">
-        <h2><span>Description</span>${ts.total ? `<span class="count num">${ts.done} of ${ts.total} tasks</span>` : ''}</h2>
-        <div class="section-body stack">
-          <div class="seg" id="body-tabs" role="group" aria-label="Description editor">
-            <button type="button" data-tab="write" aria-pressed="${tab === 'write'}">Write</button>
-            <button type="button" data-tab="preview" aria-pressed="${tab === 'preview'}">Preview</button>
+          <div class="stack" style="gap:6px">
+            <span class="field-label">Labels</span>
+            <div class="row" id="tags">${tags || '<span class="swatch-note">No labels.</span>'}</div>
+            <form class="row" id="tag-form" autocomplete="off">
+              <input class="input" id="tag-name" type="text" placeholder="add a label…" style="flex:1 1 8rem" maxlength="24"/>
+              <button class="btn ghost sm" type="submit">Add label</button>
+            </form>
           </div>
-          ${ts.total && tab === 'preview' ? `<div class="progress"><div class="bar"><i style="width:${pct}%"></i></div><span class="pct">${pct}%</span></div>` : ''}
-          ${bodyPane}
         </div>
       </section>
 
       <section class="section">
-        <h2><span>Tags</span></h2>
-        <div class="section-body stack">
-          <div class="row" id="tags">${tags || '<span class="swatch-note">No tags.</span>'}</div>
-          <form class="row" id="tag-form" autocomplete="off">
-            <input class="input" id="tag-name" type="text" placeholder="add a tag…" style="flex:1 1 8rem" maxlength="24"/>
-            <button class="btn ghost sm" type="submit">Add tag</button>
-          </form>
-        </div>
-      </section>
-
-      <section class="section">
-        <h2><span>Sub-notches</span></h2>
+        <h2><span>Sub-notches</span>${kids.length ? `<span class="count num">${kids.length}</span>` : ''}</h2>
         <div class="section-body stack">
           <div class="stack" id="subs">${subCards}</div>
           <form class="row" id="sub-form" autocomplete="off">
@@ -548,13 +690,20 @@
       </section>
 
       <section class="section">
-        <h2><span>Comments</span>${comments.length ? `<span class="count num">${comments.length}</span>` : ''}</h2>
-        <div class="section-body stack">
-          <div class="stack" id="comments">${commentList}</div>
-          <form class="stack" id="comment-form" autocomplete="off">
-            <textarea class="textarea" id="comment-text" placeholder="Leave a comment (Markdown supported)…"></textarea>
-            <div class="row" style="justify-content:flex-end">
-              <button class="btn primary sm" type="submit">Comment</button>
+        <h2><span>Activity</span><span class="count num">${events.length}</span></h2>
+        <div class="section-body">
+          <div class="timeline">
+            ${openingCardHTML(n)}
+            ${rest}
+          </div>
+          <form class="composer" id="comment-form" autocomplete="off">
+            <span class="icon">${ICON.comment}</span>
+            <div class="composer-box">
+              <textarea id="comment-text" placeholder="Leave a comment (Markdown supported)…"></textarea>
+              <div class="composer-foot">
+                <span class="swatch-note">Comments join the log below — nothing here is ever deleted.</span>
+                <button class="btn primary sm" type="submit">Comment</button>
+              </div>
             </div>
           </form>
         </div>
@@ -608,7 +757,9 @@
       const name = box.value.trim();
       if (!name) return;
       if (!n.tags.some((g) => g.name.toLowerCase() === name.toLowerCase())) {
-        n.tags.push({ name, color: PALETTE[n.tags.length % PALETTE.length] });
+        const color = PALETTE[n.tags.length % PALETTE.length];
+        n.tags.push({ name, color });
+        logEvent(n, 'labeled', { name, color });
         persist(n).then(() => renderDetail(n));
       } else {
         box.value = '';
@@ -662,7 +813,9 @@
       e.preventDefault();
       const n = currentDetail(); if (!n) return;
       const name = delTag.getAttribute('data-del-tag');
+      const tag = n.tags.find((g) => g.name === name);
       n.tags = n.tags.filter((g) => g.name !== name);
+      logEvent(n, 'unlabeled', { name, color: tag ? tag.color : 'gray' });
       persist(n).then(() => renderDetail(n));
       return;
     }
@@ -697,16 +850,35 @@
       const val = e.target.value || null;
       if (val === (n.parentId || null)) return; // no-op reselect
       n.parentId = val;
+      const to = val ? byId(val) : null;
+      logEvent(n, 'moved', { toId: val, toTitle: to ? to.title : '' });
       persist(n).then(() => renderDetail(n)); // re-render: breadcrumb + siblings move
       return;
     }
+    // Renaming: a blur on the title commits the change and, when it actually
+    // differs from the baseline (and the notch already had a name), records a
+    // `renamed` event. The debounced live edit in onInput never logs — only this
+    // commit does, so a rename lands once, not once per keystroke.
+    if (e.target.id === 'title') {
+      const n = currentDetail(); if (!n) return;
+      clearTimeout(titleTimer);
+      const v = e.target.value.trim();
+      if (v === titleBaseline) { n.title = v; return; }
+      n.title = v;
+      if (titleBaseline) logEvent(n, 'renamed', { from: titleBaseline, to: v });
+      titleBaseline = v;
+      persist(n).then(() => renderDetail(n));
+      return;
+    }
     // Ticking a task checkbox in the rendered description flips the matching
-    // `- [ ]` in the Markdown source.
+    // `- [ ]` in the Markdown source and records which task changed.
     const taskBox = e.target.closest('.md-body input[data-task]');
     if (taskBox) {
       const n = currentDetail(); if (!n) return;
       const idx = parseInt(taskBox.getAttribute('data-task'), 10);
+      const info = taskInfo(n.body, idx);
       n.body = toggleTask(n.body, idx);
+      if (info) logEvent(n, 'task', { text: info.text, done: !info.done });
       persist(n).then(() => renderDetail(n));
     }
   }

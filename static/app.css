@@ -680,21 +680,80 @@
   .md-body hr.md-hr{ border: 0; border-top: 1px solid var(--line-strong); margin: var(--sp-4) 0; }
   .md-body a{ color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
 
-  /* ---------- comments: the paper trail ----------
-     A stacked thread of small cards, each stamped with when it was written and
-     removable with the same quiet × the tags/tasks use. */
-  #comments{ gap: var(--sp-3); }
-  .comment{ border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg-raised-2); overflow: hidden; }
-  .comment-head{
-    display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
-    padding: 6px 10px 6px 12px; background: var(--bg-raised);
-    border-bottom: 1px solid var(--line); font-size: 11.5px; color: var(--ink-dim);
+  /* ---------- activity timeline: the paper trail ----------
+     The detail view's Activity section is one append-only event log, GitHub-issue
+     style. A single rail runs its length; small events (a label added, a task
+     ticked, a status change) hang off it as one-liners, while comments and the
+     opening description are full cards. A deleted comment doesn't vanish — it
+     stays as a struck-through tombstone. Nothing here is destructive. */
+  .field-label{ font-size: 12px; font-weight: 600; letter-spacing: .01em; color: var(--ink-dim); }
+
+  /* status pill in the section header + timeline */
+  .state{ display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; color: #fff; }
+  .state svg{ width: 13px; height: 13px; }
+  .state.done{ background: var(--good); }
+  .state.open{ background: var(--accent); }
+  .state.np{ background: var(--ink-dim); }
+
+  .timeline{ position: relative; display: flex; flex-direction: column; gap: 2px; }
+  .timeline::before{ content: ""; position: absolute; left: 15px; top: 6px; bottom: 18px; width: 2px; background: var(--line-strong); }
+
+  .ev{ position: relative; padding-left: 44px; }
+  .ev .icon{
+    position: absolute; left: 2px; top: 0; width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-raised-2); border: 1px solid var(--line-strong); color: var(--ink-dim);
   }
-  .comment-when{ font-variant-numeric: tabular-nums; letter-spacing: .01em; }
-  .comment-head .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .55; font-size: 15px; line-height: 1; padding: 0 2px; }
-  .comment-head .x:hover{ opacity: 1; color: var(--danger); }
-  .comment > .md-body{ padding: var(--sp-3) 12px; }
-  #comment-text{ min-height: 84px; }
+  .ev .icon svg{ width: 15px; height: 15px; }
+  .ev.accent .icon{ background: var(--accent-tint); border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); color: var(--accent-strong); }
+  .ev.good .icon{ background: color-mix(in srgb, var(--good) 15%, var(--bg-raised)); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); color: var(--good); }
+  .ev.danger .icon{ background: color-mix(in srgb, var(--danger) 12%, var(--bg-raised)); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); color: var(--danger); }
+
+  /* one-line event */
+  .ev.small{ padding-top: 5px; padding-bottom: 5px; min-height: 34px; display: flex; align-items: center; }
+  .ev.small .line{ font-size: 12.5px; color: var(--ink-dim); line-height: 1.4; }
+  .ev.small .line b{ color: var(--ink); font-weight: 600; }
+  .ev .when{ color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .ev.small .when::before{ content: "·"; margin: 0 6px; color: var(--ink-faint); }
+  .ev-link{ color: var(--accent-strong); text-decoration: none; }
+  .ev-link:hover{ text-decoration: underline; }
+
+  /* card event (comment / opening description) */
+  .ev.card{ padding-top: var(--sp-2); padding-bottom: var(--sp-2); }
+  .ev .box{ border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg-raised); overflow: hidden; }
+  .ev.accent .box{ border-color: color-mix(in srgb, var(--accent) 30%, var(--line-strong)); }
+  .ev .box-head{
+    display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+    padding: 8px 12px; background: var(--bg-raised-2); border-bottom: 1px solid var(--line);
+    font-size: 12px; color: var(--ink-dim);
+  }
+  .ev .box-head b{ color: var(--ink); font-weight: 600; }
+  .ev .box-body{ padding: var(--sp-3) 12px; }
+  .ev .box-body.stack{ gap: var(--sp-3); }
+  .ev .box-head .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .55; font-size: 15px; line-height: 1; padding: 0 2px; }
+  .ev .box-head .x:hover{ opacity: 1; color: var(--danger); }
+
+  /* a deleted comment: kept in the log, dimmed, struck, dashed */
+  .ev.deleted .box{ background: var(--bg); border-style: dashed; }
+  .ev.deleted .box-head{ background: transparent; }
+  .ev.deleted .box-body{ color: var(--ink-faint); }
+  .ev.deleted .box-body :is(p, li, h1, h2, h3, h4){ text-decoration: line-through; text-decoration-color: var(--line-strong); }
+  .tombstone{ font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--danger); }
+
+  /* the composer, pinned at the tail of the log on the same rail */
+  .composer{ position: relative; padding-left: 44px; margin-top: var(--sp-2); }
+  .composer .icon{
+    position: absolute; left: 2px; top: 0; width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent); border: 1px solid var(--accent); color: var(--accent-ink);
+  }
+  .composer .icon svg{ width: 15px; height: 15px; }
+  .composer-box{ border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg-raised); overflow: hidden; }
+  .composer textarea{ width: 100%; border: 0; background: transparent; color: var(--ink); resize: vertical; min-height: 84px; padding: var(--sp-3) 12px; font: inherit; outline: none; }
+  .composer textarea::placeholder{ color: var(--ink-faint); }
+  .composer textarea:focus-visible{ outline: 2px solid var(--accent); outline-offset: -2px; }
+  .composer-foot{ display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 8px 10px; border-top: 1px solid var(--line); background: var(--bg-raised-2); }
+  .composer-foot .swatch-note{ flex: 1 1 auto; }
 
   .back{ text-decoration: none; }
   .back:hover{ text-decoration: underline; }
