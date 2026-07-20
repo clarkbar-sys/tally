@@ -61,7 +61,7 @@ func TestStaticAssetsServed(t *testing.T) {
 		t.Fatalf("app.css not served correctly (status %d)", css.Code)
 	}
 	js := get("/static/app.js")
-	if js.Code != http.StatusOK || !strings.Contains(js.Body.String(), "indexedDB") {
+	if js.Code != http.StatusOK || !strings.Contains(js.Body.String(), "demoSeed") {
 		t.Fatalf("app.js not served correctly (status %d)", js.Code)
 	}
 }

@@ -12,10 +12,11 @@ import templruntime "github.com/a-h/templ/runtime"
 
 // AppPage is tally's local-first app shell (epic #1). It renders only the static
 // chrome — the top bar and a quiet status line — plus an empty <main> mount
-// point and a <noscript> fallback. Everything else (the tally list, detail
-// views, and all persistence) is driven client-side by static/app.js against
-// browser IndexedDB: no server, no data layer here. The same export feeds
-// GitHub Pages, so the published site is the whole app.
+// point and a <noscript> fallback. Everything else (the tally list and detail
+// views) is driven client-side by static/app.js: no server, no data layer here.
+// For now the app runs in demo mode — state lives in memory only and a reload
+// starts fresh (see static/app.js). The same export feeds GitHub Pages, so the
+// published site is the whole app.
 //
 // The default theme is Paper (a calm cream-on-sepia almanac look): app.css
 // carries it on :root, so a fresh browser needs no data-theme attribute. The
@@ -48,7 +49,7 @@ func AppPage() templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(versionString())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 49, Col: 111}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 50, Col: 111}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
