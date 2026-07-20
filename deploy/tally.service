@@ -24,8 +24,16 @@ LoadCredential=ts-authkey:/etc/tally/ts-authkey
 # service user via StateDirectory.
 StateDirectory=tally
 StateDirectoryMode=0700
+
+# Environment= supplies the defaults; the optional EnvironmentFile= below (-
+# prefix) overrides them when tally.env is present. This keeps the service
+# bootable if the file is missing, and lets install.sh reinstall this unit on
+# upgrade without clobbering any local config (see deploy/install.sh) — a
+# hand-edit of Environment= here would otherwise be silently overwritten on
+# every re-run.
 Environment=TALLY_HOSTNAME=tally
 Environment=TALLY_STATE_DIR=/var/lib/tally/tsnet
+EnvironmentFile=-/etc/tally/tally.env
 
 # Hardening. tsnet is userspace (no TUN, no NET_ADMIN), so this can stay tight.
 # Further tightening (SystemCallFilter, MemoryDenyWriteExecute) is deliberately
@@ -38,6 +46,11 @@ ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 RestrictNamespaces=true
+# AF_NETLINK is required: tsnet reads the host's routes/addresses over a
+# netlink socket at startup (route ip+net / netlinkrib). Without it the node
+# fails to come up with "address family not supported by protocol" — hit and
+# fixed the hard way in the sibling tsnet deploy (clarkbar-sys/hush #23).
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 LockPersonality=true
 
 [Install]
