@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.5.0...tally-v0.6.0) (2026-07-20)
+
+
+### Features
+
+* **web:** applications — registered actors that author tallies ([#91](https://github.com/clarkbar-sys/tally/issues/91)) ([b762421](https://github.com/clarkbar-sys/tally/commit/b762421485ab52b24c7c8f2ada3a40cf96fdd7a4))
+* **web:** modify-ops — let a tally (and an app) change an existing notch ([#93](https://github.com/clarkbar-sys/tally/issues/93)) ([199575b](https://github.com/clarkbar-sys/tally/commit/199575be7e4cd589e3740fa460ff1e2e2bdbe41e))
+
 ## [0.5.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.4.0...tally-v0.5.0) (2026-07-20)
 
 
