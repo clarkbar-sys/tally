@@ -25,7 +25,7 @@
 //           parentId:string|null, status:'open'|'done'|'not_planned',
 //           createdAt, updatedAt }
 //   Event { id, kind, at, ...payload }   kind ∈ opened | comment | labeled |
-//           unlabeled | task | moved | sub | renamed | status
+//           unlabeled | task | moved | sub | renamed | status | attachment
 // `body` is the Markdown description; tasks are ordinary Markdown task-list
 // items inside it (`- [ ]` / `- [x]`), not a separate structure — mirroring how
 // GitHub issues carry their checklists. A sub-notch is an ordinary notch whose
@@ -43,6 +43,14 @@
 // so its tombstone stays in the record. Comments live solely as `comment` events
 // (there is no separate comments array). The `opened` event anchors the top of
 // the log and hosts the live Markdown description.
+//
+// ATTACHMENTS: files and photos attach to a notch as `attachment` events on that
+// same timeline. In demo mode the bytes ride along in memory as a data: URL on
+// the event (`{name, mime, size, dataUrl}`) — no server, no blob store — so a
+// reload wipes them with everything else. Images preview inline (and open in a
+// lightbox on click); anything else shows as a downloadable file chip. Like a
+// comment, a "removed" attachment is only flagged `deleted:true`, never dropped.
+// When a real backend lands, the dataUrl is the seam that becomes an object ref.
 
 (() => {
   'use strict';
@@ -61,6 +69,27 @@
   const byId = (id) => notches.find((n) => n.id === id);
 
   const PALETTE = ['red', 'amber', 'green', 'blue', 'pink', 'cyan'];
+
+  // Attachments. In demo mode a file's bytes live in memory as a data: URL, so a
+  // generous-but-finite cap keeps a stray multi-hundred-MB drop from wedging the
+  // tab. Only raster/vector image types preview inline; everything else is a
+  // download chip. (SVG previews via <img>, where scripts never execute.)
+  const MAX_ATTACH_BYTES = 25 * 1024 * 1024;
+  const IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml', 'image/avif', 'image/bmp']);
+  const isImageMime = (mime) => IMAGE_MIMES.has(String(mime || '').toLowerCase());
+  // A compact, human-readable byte count for the file meta line.
+  function fmtBytes(bytes) {
+    const b = Number(bytes) || 0;
+    if (b < 1024) return `${b} B`;
+    const units = ['KB', 'MB', 'GB'];
+    let v = b / 1024, i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+  }
+  // encodeURIComponent keeps the seed's inline SVG "photos" valid in both an
+  // <img src> attribute and a download href without hand-encoding every glyph.
+  const svgDataUrl = (svg) => 'data:image/svg+xml,' + encodeURIComponent(svg);
+  const textDataUrl = (text) => 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
 
   const topLevel = () => sortByUpdated(notches.filter((n) => !n.parentId));
   const childrenOf = (id) => sortByUpdated(notches.filter((n) => n.parentId === id));
@@ -99,6 +128,18 @@
   // demoSeed builds the starting notches for a demo session — fresh ids and
   // timestamps each call, so Reset (and every reload) lands on the same shape.
   // It shows off the core moves: a task list, tags, a comment, and nesting.
+  // A tiny inline "photo" and a text file so the attachment feature has
+  // something to show the moment the demo loads — no external assets, all data:
+  // URLs held in memory like any user upload.
+  const DEMO_PHOTO = svgDataUrl(
+    "<svg xmlns='http://www.w3.org/2000/svg' width='480' height='300' viewBox='0 0 480 300'>" +
+    "<rect width='480' height='300' fill='skyblue'/>" +
+    "<circle cx='384' cy='74' r='40' fill='gold'/>" +
+    "<path d='M0 300 L150 140 L250 260 L340 120 L480 300 Z' fill='seagreen'/>" +
+    "<path d='M0 300 L110 205 L215 300 Z' fill='darkgreen'/>" +
+    "</svg>");
+  const DEMO_NOTE = textDataUrl('tally — attachment demo\n\nDrop a photo or any file onto a notch;\nit rides along in memory until you reload.\n');
+
   function demoSeed() {
     const t = now();
     const mk = (o) => Object.assign(
@@ -116,6 +157,7 @@
           '- [ ] Check off a task by clicking the box',
           '- [x] (this one is already done)',
           '- [ ] Open a notch and leave a comment',
+          '- [ ] Attach a photo or file with the paperclip below',
           '',
           'Use **Reset demo** in the bar above to wipe back to this starting point.',
         ].join('\n'),
@@ -127,6 +169,8 @@
           { id: 'e_w3', kind: 'comment', at: t - 3000, body: 'Notches keep a permanent event log, like a GitHub issue — labels, comments, tasks, status. Nothing you do here ever disappears from the record.' },
           { id: 'e_w4', kind: 'comment', at: t - 2000, deleted: true, body: 'Even a deleted comment stays as a struck-through tombstone.' },
           { id: 'e_w5', kind: 'task', at: t - 1000, text: '(this one is already done)', done: true },
+          { id: 'e_w6', kind: 'attachment', at: t - 800, name: 'sunset.svg', mime: 'image/svg+xml', size: 512, dataUrl: DEMO_PHOTO },
+          { id: 'e_w7', kind: 'attachment', at: t - 400, name: 'about-attachments.txt', mime: 'text/plain', size: 132, dataUrl: DEMO_NOTE },
         ],
       }),
       mk({
@@ -213,6 +257,44 @@
   // renders a struck-through tombstone. The record keeps its full history.
   async function deleteComment(n, id) {
     const ev = (n.events || []).find((e) => e.id === id && e.kind === 'comment');
+    if (ev) ev.deleted = true;
+    await persist(n);
+  }
+
+  // Read a File into a data: URL — the in-memory stand-in for a stored blob.
+  function readFileDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(r.error || new Error('read failed'));
+      r.readAsDataURL(file);
+    });
+  }
+  // addAttachments logs one `attachment` event per file. Oversized files are
+  // skipped (their bytes would just sit in memory) and reported back so the UI
+  // can tell the user which ones didn't take. Persist once at the end.
+  async function addAttachments(n, files) {
+    const skipped = [];
+    for (const file of files) {
+      if (!file) continue;
+      if (file.size > MAX_ATTACH_BYTES) { skipped.push(file.name || 'file'); continue; }
+      try {
+        const dataUrl = await readFileDataURL(file);
+        logEvent(n, 'attachment', {
+          name: file.name || 'file',
+          mime: file.type || 'application/octet-stream',
+          size: file.size,
+          dataUrl,
+        });
+      } catch (e) { skipped.push(file.name || 'file'); }
+    }
+    await persist(n);
+    return skipped;
+  }
+  // "Removing" an attachment mirrors deleting a comment: it flags the event so
+  // the timeline keeps a tombstone rather than losing the record.
+  async function deleteAttachment(n, id) {
+    const ev = (n.events || []).find((e) => e.id === id && e.kind === 'attachment');
     if (ev) ev.deleted = true;
     await persist(n);
   }
@@ -350,6 +432,8 @@
 
   // Live (non-deleted) comments on a notch, oldest → newest.
   const liveComments = (n) => (n.events || []).filter((e) => e.kind === 'comment' && !e.deleted);
+  // Live (non-deleted) attachments on a notch — feeds the card/roll-up counts.
+  const liveAttachments = (n) => (n.events || []).filter((e) => e.kind === 'attachment' && !e.deleted);
 
   // parseQuery pulls `is:` status tokens (e.g. "is:open", "is:closed") out of a
   // search string, GitHub-issue-search style, leaving the rest as free text.
@@ -396,18 +480,20 @@
   function ticker() {
     const el = document.getElementById('ticker');
     if (!el) return;
-    let done = 0, total = 0;
+    let done = 0, total = 0, files = 0;
     const tags = new Set();
     for (const n of notches) {
       const s = taskStats(n);
       done += s.done; total += s.total;
+      files += liveAttachments(n).length;
       for (const g of n.tags) tags.add(g.name);
     }
     const open = notches.filter((n) => notchStatus(n) === 'open').length;
     el.innerHTML =
       `<span class="stat"><b>${open}</b> open</span>` +
       `<span class="stat"><b class="up">${done}</b> of <b>${total}</b> tasks done</span>` +
-      `<span class="stat"><b>${tags.size}</b> tags</span>`;
+      `<span class="stat"><b>${tags.size}</b> tags</span>` +
+      `<span class="stat"><b>${files}</b> file${files === 1 ? '' : 's'}</span>`;
   }
 
   // ---------- cards ----------
@@ -422,10 +508,12 @@
     const s = taskStats(n);
     const kids = childrenOf(n.id).length;
     const comments = liveComments(n).length;
+    const files = liveAttachments(n).length;
     const bits = [];
     if (kids) bits.push(`<span class="num">${kids}</span> sub-notch${kids === 1 ? '' : 'es'}`);
     if (s.total) bits.push(`<span class="num">${s.done}/${s.total}</span> task${s.total === 1 ? '' : 's'}`);
     if (comments) bits.push(`<span class="num">${comments}</span> comment${comments === 1 ? '' : 's'}`);
+    if (files) bits.push(`<span class="num">${files}</span> file${files === 1 ? '' : 's'}`);
     if ((n.body || '').trim() && !s.total) bits.push('description');
     const meta = bits.length ? bits.join(' · ') : 'empty';
     const tags = statusLab(n) + n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
@@ -562,6 +650,12 @@
     dots: svgIcon('<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>'),
     caret: svgIcon('<path d="M9 6l6 6-6 6"/>', 2.4),
     plus: svgIcon('<path d="M12 5v14"/><path d="M5 12h14"/>', 2.4),
+    // Attachment affordances: a paperclip for the composer action, and image /
+    // file / download glyphs for the attachment cards.
+    clip: svgIcon('<path d="M21 10.5 11.5 20a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.6 1.6 0 0 1-2.3-2.3l7.8-7.8"/>'),
+    image: svgIcon('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15l-5-5L5 21"/>'),
+    file: svgIcon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/>'),
+    download: svgIcon('<path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/>'),
   };
 
   const labChip = (name, color) => `<span class="lab ${esc(color || 'gray')}">${esc(name)}</span>`;
@@ -614,9 +708,51 @@
       `<div class="box-body md-body">${mdRender(ev.body)}</div></div></div>`;
   }
 
+  // An attachment card: an image previews inline (a button that opens the
+  // lightbox) with a download link; any other file is a single download chip.
+  // Once removed it collapses to a tombstone, like a deleted comment.
+  function attachmentEventHTML(ev) {
+    const when = fmtDate(ev.at);
+    const name = ev.name || 'file';
+    if (ev.deleted) {
+      return '<div class="ev card deleted danger">' +
+        `<span class="icon">${ICON.trash}</span>` +
+        '<div class="box"><div class="box-head">' +
+        `<span class="tombstone">removed attachment</span><span class="when">${when}</span></div>` +
+        `<div class="box-body md-body"><span class="attach-name">${esc(name)}</span></div></div></div>`;
+    }
+    const delBtn = `<button class="x" type="button" data-del-attach="${esc(ev.id)}" aria-label="remove attachment">&times;</button>`;
+    if (isImageMime(ev.mime)) {
+      return '<div class="ev card">' +
+        `<span class="icon">${ICON.image}</span>` +
+        '<div class="box"><div class="box-head">' +
+        `<span><b>you</b> attached <b>${esc(name)}</b></span>` +
+        `<span class="row" style="gap:8px;align-items:center"><span class="when">${when}</span>${delBtn}</span></div>` +
+        '<div class="box-body attach-body">' +
+        `<button type="button" class="attach-figure" data-attach-view="${esc(ev.id)}" aria-label="View ${esc(name)} full size">` +
+        `<img src="${esc(ev.dataUrl)}" alt="${esc(name)}" loading="lazy"/></button>` +
+        '<div class="attach-meta">' +
+        `<span class="attach-size">${fmtBytes(ev.size)}</span>` +
+        `<a class="attach-dl" href="${esc(ev.dataUrl)}" download="${esc(name)}">${ICON.download}<span>Download</span></a>` +
+        '</div></div></div></div>';
+    }
+    return '<div class="ev card">' +
+      `<span class="icon">${ICON.file}</span>` +
+      '<div class="box"><div class="box-head">' +
+      `<span><b>you</b> attached a file</span>` +
+      `<span class="row" style="gap:8px;align-items:center"><span class="when">${when}</span>${delBtn}</span></div>` +
+      '<div class="box-body attach-body">' +
+      `<a class="attach-file" href="${esc(ev.dataUrl)}" download="${esc(name)}">` +
+      `<span class="attach-ico">${ICON.file}</span>` +
+      `<span class="attach-file-txt"><span class="attach-name">${esc(name)}</span>` +
+      `<span class="attach-size">${fmtBytes(ev.size)} · download</span></span>${ICON.download}</a>` +
+      '</div></div></div>';
+  }
+
   function eventHTML(n, ev) {
     switch (ev.kind) {
       case 'comment': return commentEventHTML(ev);
+      case 'attachment': return attachmentEventHTML(ev);
       case 'labeled': return evSmall('accent', ICON.tag, `added the ${labChip(ev.name, ev.color)} label`, ev.at);
       case 'unlabeled': return evSmall('', ICON.untag, `removed the ${labChip(ev.name, ev.color)} label`, ev.at);
       case 'task': return evSmall(ev.done ? 'good' : '', ev.done ? ICON.check : ICON.box,
@@ -718,10 +854,12 @@
     const s = taskStats(n);
     const kids = childrenOf(n.id).length;
     const comments = liveComments(n).length;
+    const files = liveAttachments(n).length;
     const bits = [];
     if (kids) bits.push(`${kids} sub-notch${kids === 1 ? '' : 'es'}`);
     if (s.total) bits.push(`${s.done}/${s.total} task${s.total === 1 ? '' : 's'}`);
     if (comments) bits.push(`${comments} comment${comments === 1 ? '' : 's'}`);
+    if (files) bits.push(`${files} file${files === 1 ? '' : 's'}`);
     const meta = bits.length ? bits.join(' · ') : '—';
     const tags = statusLab(n) + n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
     return `
@@ -803,7 +941,11 @@
               <textarea id="comment-text" placeholder="Leave a comment (Markdown supported)…"></textarea>
               <div class="composer-foot">
                 <span class="swatch-note">Comments join the log below — nothing here is ever deleted.</span>
-                <button class="btn primary sm" type="submit">Comment</button>
+                <div class="composer-actions">
+                  <input id="attach-input" class="visually-hidden" type="file" multiple aria-hidden="true" tabindex="-1"/>
+                  <button class="btn ghost sm" id="attach-btn" type="button">${ICON.clip}<span>Attach</span></button>
+                  <button class="btn primary sm" type="submit">Comment</button>
+                </div>
               </div>
             </div>
           </form>
@@ -811,6 +953,31 @@
       </section>`;
 
     applyOpenMenu();
+  }
+
+  // ---------- lightbox ----------
+  // A bare-bones full-screen image viewer for attachment previews: one overlay
+  // appended to <body>, dismissed by clicking anywhere or pressing Escape. No
+  // state to track beyond "is one open" — opening a second closes the first.
+  function onLightboxKey(e) { if (e.key === 'Escape') closeLightbox(); }
+  function closeLightbox() {
+    const ov = document.querySelector('.lightbox');
+    if (ov) ov.remove();
+    document.removeEventListener('keydown', onLightboxKey);
+  }
+  function openLightbox(url, name) {
+    closeLightbox();
+    const ov = document.createElement('div');
+    ov.className = 'lightbox';
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-label', name || 'attachment');
+    ov.innerHTML =
+      `<figure class="lightbox-fig"><img src="${esc(url)}" alt="${esc(name || '')}"/>` +
+      `<figcaption>${esc(name || '')}</figcaption></figure>` +
+      '<button class="lightbox-x" type="button" aria-label="Close">&times;</button>';
+    ov.addEventListener('click', closeLightbox);
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', onLightboxKey);
   }
 
   // ---------- router ----------
@@ -916,6 +1083,34 @@
     const menuTrigger = e.target.closest('[data-menu-trigger]');
     if (menuTrigger) { e.preventDefault(); toggleMenu(menuTrigger); return; }
 
+    // The Attach button proxies a click to the hidden file input; the picker's
+    // change event (onChange) does the actual work.
+    if (e.target.closest('#attach-btn')) {
+      e.preventDefault();
+      const input = document.getElementById('attach-input');
+      if (input) input.click();
+      return;
+    }
+
+    // Clicking an image preview opens it full-size in the lightbox. Look the
+    // event up by id so the (potentially large) data URL never rides in the DOM
+    // attribute.
+    const attView = e.target.closest('[data-attach-view]');
+    if (attView) {
+      e.preventDefault();
+      const n = currentDetail(); if (!n) return;
+      const ev = (n.events || []).find((x) => x.id === attView.getAttribute('data-attach-view'));
+      if (ev) openLightbox(ev.dataUrl, ev.name);
+      return;
+    }
+    const delAtt = e.target.closest('[data-del-attach]');
+    if (delAtt) {
+      e.preventDefault();
+      const n = currentDetail(); if (!n) return;
+      deleteAttachment(n, delAtt.getAttribute('data-del-attach')).then(() => renderDetail(n));
+      return;
+    }
+
     if (e.target.closest('#new-notch')) {
       e.preventDefault();
       createNotch('', null).then((n) => { location.hash = '#/n/' + n.id; }).catch(() => {});
@@ -993,6 +1188,21 @@
   }
 
   function onChange(e) {
+    // Picking files in the hidden input attaches each to the current notch. Clear
+    // the input's value so re-picking the same file fires change again.
+    if (e.target.id === 'attach-input') {
+      const n = currentDetail(); if (!n) return;
+      const files = Array.from(e.target.files || []);
+      e.target.value = '';
+      if (!files.length) return;
+      addAttachments(n, files).then((skipped) => {
+        renderDetail(n);
+        if (skipped && skipped.length) {
+          alert(`Too large to attach in this demo (max ${fmtBytes(MAX_ATTACH_BYTES)}):\n${skipped.join('\n')}`);
+        }
+      });
+      return;
+    }
     // Blur/commit on the description textarea saves immediately, so a pending
     // debounced edit isn't lost when the next click re-renders the detail view.
     if (e.target.id === 'body') {
