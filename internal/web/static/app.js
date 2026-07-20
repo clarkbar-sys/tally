@@ -29,8 +29,9 @@
 // `body` is the Markdown description; tasks are ordinary Markdown task-list
 // items inside it (`- [ ]` / `- [x]`), not a separate structure — mirroring how
 // GitHub issues carry their checklists. A sub-notch is an ordinary notch whose
-// parentId points at its parent. Any notch can be re-parented after the fact
-// (the "Parent" picker on the detail view) to group existing notches — the only
+// parentId points at its parent. Any notch can be re-parented after the fact —
+// the detail view's sub-notches roll-up links an existing notch under the current
+// one (and the header kebab moves a notch back to the top level) — the only
 // restriction is that a notch can't be moved under itself or one of its own
 // descendants, which would make a cycle. A notch is never deleted — it's closed
 // as done or not planned (and can be reopened), same as a GitHub issue.
@@ -80,23 +81,18 @@
     return out;
   }
 
-  // n plus every notch beneath it (for the move guard)
-  function subtree(n) {
-    const out = [n];
-    for (const c of notches.filter((x) => x.parentId === n.id)) out.push(...subtree(c));
-    return out;
-  }
-
-  // A readable "A / B / C" path for a notch, so nested targets in the move
+  // A readable "A / B / C" path for a notch, so nested targets in the link-existing
   // picker are distinguishable when titles repeat.
   function pathLabel(n) {
     return trail(n).concat(n).map((x) => x.title.trim() || 'untitled').join(' / ');
   }
 
-  // Valid new parents for n: every notch that isn't n or one of n's own
-  // descendants. Moving n under its own subtree would create a cycle.
-  function moveTargets(n) {
-    const blocked = new Set(subtree(n).map((x) => x.id));
+  // Notches that can be linked as a child of n (the "link existing" picker on the
+  // sub-notches roll-up): anything that isn't n itself, isn't already a direct
+  // child, and isn't an ancestor of n — parenting n's own ancestor under it would
+  // make a cycle. A deeper descendant may still be pulled straight up to a child.
+  function linkTargets(n) {
+    const blocked = new Set([n.id, ...trail(n).map((a) => a.id), ...childrenOf(n.id).map((c) => c.id)]);
     return sortByUpdated(notches.filter((x) => !blocked.has(x.id)));
   }
 
@@ -188,6 +184,18 @@
     if (parentId) { const p = byId(parentId); if (p) logEvent(p, 'sub', { subId: n.id, title: n.title }); }
     ticker();
     return Promise.resolve(n);
+  }
+  // linkChild re-parents an existing notch under `parent`, recording it on both
+  // timelines (a `moved` on the child, a `sub` on the parent) exactly as creating
+  // a fresh sub-notch does — this is the "link existing" half of Add sub-notch.
+  async function linkChild(parent, childId) {
+    const c = byId(childId);
+    if (!c || c.id === parent.id || c.parentId === parent.id) return;
+    c.parentId = parent.id;
+    logEvent(c, 'moved', { toId: parent.id, toTitle: parent.title });
+    logEvent(parent, 'sub', { subId: c.id, title: c.title });
+    await persist(c);
+    await persist(parent);
   }
   const notchStatus = (n) => n.status || 'open';
   async function setStatus(n, status) {
@@ -499,12 +507,29 @@
   // description editor shows (Write vs Preview). Keyed by notch id so opening a
   // different notch resets it — a fresh/empty body opens in Write, an existing
   // one in Preview (rendered), the way GitHub shows a saved issue body.
-  let detailUI = { id: null, bodyTab: 'preview' };
-  function bodyTabFor(n) {
+  let detailUI = { id: null, bodyTab: 'preview', subsCollapsed: false };
+  function ensureDetailUI(n) {
     if (detailUI.id !== n.id) {
-      detailUI = { id: n.id, bodyTab: (n.body || '').trim() ? 'preview' : 'write' };
+      detailUI = { id: n.id, bodyTab: (n.body || '').trim() ? 'preview' : 'write', subsCollapsed: false };
     }
-    return detailUI.bodyTab;
+    return detailUI;
+  }
+  function bodyTabFor(n) { return ensureDetailUI(n).bodyTab; }
+
+  // Which detail popover to re-open after the next renderDetail (a full re-render
+  // otherwise closes every menu). Set right before a menu-driven mutation so the
+  // labels popover, say, stays open while you add several labels in a row; cleared
+  // once applied so an unrelated re-render doesn't spuriously pop it back open.
+  let detailMenu = null;
+  function applyOpenMenu() {
+    if (!detailMenu) return;
+    const m = document.querySelector(`.menu[data-menu="${detailMenu}"]`);
+    if (m) {
+      m.classList.add('open');
+      const t = m.querySelector('[data-menu-trigger]');
+      if (t) t.setAttribute('aria-expanded', 'true');
+    }
+    detailMenu = null;
   }
 
   // The title as it stood when the detail view was last rendered — the baseline a
@@ -532,6 +557,11 @@
     skip: svgIcon('<circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/>'),
     reopen: svgIcon('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>'),
     dot: svgIcon('<circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/>'),
+    // A horizontal kebab ("…") — the menu affordance on the detail header and the
+    // labels row; and a chevron for the collapsible sub-notches roll-up.
+    dots: svgIcon('<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>'),
+    caret: svgIcon('<path d="M9 6l6 6-6 6"/>', 2.4),
+    plus: svgIcon('<path d="M12 5v14"/><path d="M5 12h14"/>', 2.4),
   };
 
   const labChip = (name, color) => `<span class="lab ${esc(color || 'gray')}">${esc(name)}</span>`;
@@ -541,6 +571,22 @@
     if (s === 'done') return `<span class="state done">${ICON.done} Done</span>`;
     if (s === 'not_planned') return `<span class="state np">${ICON.skip} Not planned</span>`;
     return `<span class="state open">${ICON.dot} Open</span>`;
+  }
+
+  // The parent's status words, for the chip label + its aria/title text.
+  const STATUS_WORD = { open: 'open', done: 'done', not_planned: 'not planned' };
+
+  // parentChip renders the parent notch inline in the detail header — a compact
+  // link that carries the parent's own open/done/not-planned state (a coloured
+  // status dot) and navigates to it on click. Replaces the old Parent picker.
+  function parentChip(p) {
+    const s = notchStatus(p);
+    const cls = s === 'done' ? 'done' : s === 'not_planned' ? 'np' : 'open';
+    const icon = s === 'done' ? ICON.done : s === 'not_planned' ? ICON.skip : ICON.dot;
+    const title = p.title.trim() || 'untitled';
+    return `<a class="parent-chip" href="#/n/${esc(p.id)}" title="Parent (${STATUS_WORD[s] || 'open'}): ${esc(title)}">` +
+      `<span class="pdot ${cls}" aria-hidden="true">${icon}</span>` +
+      `<span class="pttl">${esc(title)}</span></a>`;
   }
 
   // A one-line event on the rail: icon + "you <did something> · <when>".
@@ -624,30 +670,84 @@
       `${bodyPane}</div></div></div>`;
   }
 
+  // The detail header packs the state, the parent, and the actions kebab onto one
+  // line: [state pill] · [parent chip → the parent] · […]. The kebab is the one
+  // place status changes now (Reopen / Close as done / Close as not planned), and
+  // — when the notch has a parent — where it can be moved back to the top level.
+  function headerActions(n) {
+    const status = notchStatus(n);
+    const parent = n.parentId ? byId(n.parentId) : null;
+    const items = [];
+    if (status !== 'open') items.push(`<button class="menu-item" type="button" data-set-status="open">${ICON.reopen}<span>Reopen</span></button>`);
+    if (status !== 'done') items.push(`<button class="menu-item good" type="button" data-set-status="done">${ICON.done}<span>Close as done</span></button>`);
+    if (status !== 'not_planned') items.push(`<button class="menu-item" type="button" data-set-status="not_planned">${ICON.skip}<span>Close as not planned</span></button>`);
+    if (parent) items.push('<div class="menu-sep"></div>' +
+      `<button class="menu-item" type="button" id="move-top">${ICON.move}<span>Move to top level</span></button>`);
+    const menu =
+      '<div class="menu" data-menu="status">' +
+      `<button class="menu-btn" type="button" data-menu-trigger aria-haspopup="true" aria-expanded="false" aria-label="Change status">${ICON.dots}</button>` +
+      `<div class="menu-pop right"><div class="menu-title">Status</div>${items.join('')}</div></div>`;
+    return `${statePill(n)}${parent ? parentChip(parent) : ''}${menu}`;
+  }
+
+  // Labels sit right above the title: the live chips read-only, with a kebab whose
+  // popover both adds new labels and removes existing ones (each chip in the
+  // popover is a remove button). Edits keep the popover open so several labels can
+  // be managed in one go.
+  function labelsRow(n) {
+    const chips = n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
+    const popChips = n.tags.length
+      ? n.tags.map((g) => `<button class="menu-label" type="button" data-del-tag="${esc(g.name)}" aria-label="remove ${esc(g.name)} label">` +
+          `<span class="lab ${esc(g.color)}">${esc(g.name)}</span><span class="x" aria-hidden="true">&times;</span></button>`).join('')
+      : '<span class="swatch-note">No labels yet.</span>';
+    return '<div class="labels-row">' +
+      `<div class="labels-chips">${chips || '<span class="swatch-note">No labels</span>'}</div>` +
+      '<div class="menu" data-menu="labels">' +
+      `<button class="menu-btn sm" type="button" data-menu-trigger aria-haspopup="true" aria-expanded="false" aria-label="Edit labels">${ICON.dots}</button>` +
+      '<div class="menu-pop right"><div class="menu-title">Labels</div>' +
+      `<div class="menu-labels">${popChips}</div>` +
+      '<form class="row" id="tag-form" autocomplete="off" style="margin-top:8px">' +
+      '<input class="input" id="tag-name" type="text" placeholder="add a label…" style="flex:1 1 6rem" maxlength="24"/>' +
+      '<button class="btn ghost sm" type="submit">Add</button></form></div></div></div>';
+  }
+
+  // Sub-notches now live at the foot of the notch box as a collapsible roll-up
+  // (the header toggles it) with an Add popover that either creates a new child or
+  // links an existing notch under this one.
+  function subsBlock(n) {
+    const kids = childrenOf(n.id);
+    const collapsed = ensureDetailUI(n).subsCollapsed;
+    const list = kids.length
+      ? `<div class="notch-list">${kids.map(cardHTML).join('')}</div>`
+      : '<span class="swatch-note">No sub-notches yet.</span>';
+    const links = linkTargets(n);
+    const linkForm = links.length
+      ? '<div class="menu-sep"></div><div class="menu-title">Link an existing notch</div>' +
+        '<form class="stack" id="link-form" autocomplete="off" style="gap:8px">' +
+        `<select class="select" id="link-target">${links.map((t) => `<option value="${esc(t.id)}">${esc(pathLabel(t))}</option>`).join('')}</select>` +
+        '<button class="btn ghost sm" type="submit">Link as sub-notch</button></form>'
+      : '';
+    return `<div class="subs${collapsed ? ' collapsed' : ''}">` +
+      '<div class="subs-head">' +
+      `<button class="subs-toggle" type="button" id="subs-toggle" aria-expanded="${!collapsed}">` +
+      `<span class="caret" aria-hidden="true">${ICON.caret}</span><span>Sub-notches</span>` +
+      `${kids.length ? `<span class="count num">${kids.length}</span>` : ''}</button>` +
+      '<div class="menu" data-menu="subs">' +
+      `<button class="btn ghost sm add-sub" type="button" data-menu-trigger aria-haspopup="true" aria-expanded="false">${ICON.plus}<span>Add</span></button>` +
+      '<div class="menu-pop right"><div class="menu-title">New sub-notch</div>' +
+      '<form class="stack" id="sub-form" autocomplete="off" style="gap:8px">' +
+      '<input class="input" id="sub-title" type="text" placeholder="new sub-notch title…"/>' +
+      '<button class="btn primary sm" type="submit">Create</button></form>' +
+      `${linkForm}</div></div></div>` +
+      `<div class="subs-body">${list}</div></div>`;
+  }
+
   function renderDetail(n) {
     titleBaseline = n.title || '';
 
     const crumbs = [`<a href="#/" class="back">all notches</a>`]
       .concat(trail(n).map((a) => `<a href="#/n/${esc(a.id)}" class="back">${esc(a.title) || 'untitled'}</a>`))
       .join('<span class="crumb-sep"> / </span>');
-
-    const kids = childrenOf(n.id);
-    const subCards = kids.length
-      ? `<div class="notch-list">${kids.map(cardHTML).join('')}</div>`
-      : '<span class="swatch-note">No sub-notches.</span>';
-
-    // Current labels — the live set, editable here; the log below keeps the full
-    // history of what was ever added or removed.
-    const tags = n.tags.map((g) => `
-      <span class="chip tag-chip"><span class="lab ${esc(g.color)}">${esc(g.name)}</span>
-        <button class="x" type="button" data-del-tag="${esc(g.name)}" aria-label="remove label">&times;</button></span>`).join('');
-
-    const status = notchStatus(n);
-    const closeControls = status === 'open'
-      ? `${statePill(n)}
-         <button class="btn ghost sm" id="close-not-planned" type="button">Not planned</button>
-         <button class="btn primary sm" id="close-done" type="button">Close as done</button>`
-      : `${statePill(n)}<button class="btn ghost sm" id="reopen" type="button">Reopen</button>`;
 
     // The timeline: the opening card (with the live description) first, then every
     // other event in chronological order. Deleted comments stay as tombstones.
@@ -658,34 +758,11 @@
       <p class="lede">← ${crumbs}</p>
 
       <section class="section">
-        <h2><span>Notch</span><span class="row" style="gap:8px">${closeControls}</span></h2>
+        <h2><span>Notch</span><span class="row head-actions" style="gap:8px">${headerActions(n)}</span></h2>
         <div class="section-body stack">
+          ${labelsRow(n)}
           <label class="field"><span>Title</span><input class="input title-input" id="title" type="text" value="${esc(n.title)}" placeholder="Title"/></label>
-          <label class="field"><span>Parent</span>
-            <select class="select" id="parent">
-              <option value=""${n.parentId ? '' : ' selected'}>— top level —</option>
-              ${moveTargets(n).map((t) => `<option value="${esc(t.id)}"${t.id === n.parentId ? ' selected' : ''}>${esc(pathLabel(t))}</option>`).join('')}
-            </select>
-          </label>
-          <div class="stack" style="gap:6px">
-            <span class="field-label">Labels</span>
-            <div class="row" id="tags">${tags || '<span class="swatch-note">No labels.</span>'}</div>
-            <form class="row" id="tag-form" autocomplete="off">
-              <input class="input" id="tag-name" type="text" placeholder="add a label…" style="flex:1 1 8rem" maxlength="24"/>
-              <button class="btn ghost sm" type="submit">Add label</button>
-            </form>
-          </div>
-        </div>
-      </section>
-
-      <section class="section">
-        <h2><span>Sub-notches</span>${kids.length ? `<span class="count num">${kids.length}</span>` : ''}</h2>
-        <div class="section-body stack">
-          <div class="stack" id="subs">${subCards}</div>
-          <form class="row" id="sub-form" autocomplete="off">
-            <input class="input" id="sub-title" type="text" placeholder="add a sub-notch…" style="flex:1 1 12rem"/>
-            <button class="btn ghost sm" type="submit">Add sub-notch</button>
-          </form>
+          ${subsBlock(n)}
         </div>
       </section>
 
@@ -708,6 +785,8 @@
           </form>
         </div>
       </section>`;
+
+    applyOpenMenu();
   }
 
   // ---------- router ----------
@@ -738,7 +817,18 @@
       const box = document.getElementById('sub-title');
       const title = box.value.trim();
       if (!title) return;
+      ensureDetailUI(parent).subsCollapsed = false; // reveal the new child
       createNotch(title, parent.id).then(() => renderDetail(parent)).catch(() => {});
+      return;
+    }
+    if (f.id === 'link-form') {
+      e.preventDefault();
+      const parent = currentDetail(); if (!parent) return;
+      const sel = document.getElementById('link-target');
+      const id = sel && sel.value;
+      if (!id) return;
+      ensureDetailUI(parent).subsCollapsed = false; // reveal the linked child
+      linkChild(parent, id).then(() => renderDetail(parent)).catch(() => {});
       return;
     }
     if (f.id === 'comment-form') {
@@ -760,6 +850,7 @@
         const color = PALETTE[n.tags.length % PALETTE.length];
         n.tags.push({ name, color });
         logEvent(n, 'labeled', { name, color });
+        detailMenu = 'labels'; // keep the labels popover open for the next add
         persist(n).then(() => renderDetail(n));
       } else {
         box.value = '';
@@ -768,8 +859,38 @@
     }
   }
 
+  // Toggle a detail popover (status / labels / add-sub). Opening one closes any
+  // other, so only a single menu is ever open; the document-level onDocClick
+  // closes them on an outside click.
+  function toggleMenu(trigger) {
+    const menu = trigger.closest('.menu');
+    if (!menu) return;
+    const willOpen = !menu.classList.contains('open');
+    document.querySelectorAll('.menu.open').forEach((m) => {
+      m.classList.remove('open');
+      const t = m.querySelector('[data-menu-trigger]');
+      if (t) t.setAttribute('aria-expanded', 'false');
+    });
+    if (willOpen) menu.classList.add('open');
+    trigger.setAttribute('aria-expanded', String(willOpen));
+  }
+
+  function onDocClick(e) {
+    const open = document.querySelectorAll('.menu.open');
+    if (!open.length) return;
+    open.forEach((m) => {
+      if (m.contains(e.target)) return;
+      m.classList.remove('open');
+      const t = m.querySelector('[data-menu-trigger]');
+      if (t) t.setAttribute('aria-expanded', 'false');
+    });
+  }
+
   function onClick(e) {
     if (e.target.closest('.back')) return; // hash links navigate themselves
+
+    const menuTrigger = e.target.closest('[data-menu-trigger]');
+    if (menuTrigger) { e.preventDefault(); toggleMenu(menuTrigger); return; }
 
     if (e.target.closest('#new-notch')) {
       e.preventDefault();
@@ -790,7 +911,7 @@
     if (tabBtn) {
       const n = currentDetail(); if (!n) return;
       const ta = document.getElementById('body');
-      detailUI = { id: n.id, bodyTab: tabBtn.getAttribute('data-tab') };
+      ensureDetailUI(n).bodyTab = tabBtn.getAttribute('data-tab');
       if (ta && ta.value !== (n.body || '')) {
         clearTimeout(bodyTimer);
         n.body = ta.value;
@@ -816,22 +937,33 @@
       const tag = n.tags.find((g) => g.name === name);
       n.tags = n.tags.filter((g) => g.name !== name);
       logEvent(n, 'unlabeled', { name, color: tag ? tag.color : 'gray' });
+      detailMenu = 'labels'; // keep the labels popover open after removing one
       persist(n).then(() => renderDetail(n));
       return;
     }
-    if (e.target.id === 'close-done') {
+    // Status changes live in the header kebab now: one handler for all three.
+    const setStat = e.target.closest('[data-set-status]');
+    if (setStat) {
+      e.preventDefault();
       const n = currentDetail(); if (!n) return;
-      setStatus(n, 'done').then(() => renderDetail(n));
+      setStatus(n, setStat.getAttribute('data-set-status')).then(() => renderDetail(n));
       return;
     }
-    if (e.target.id === 'close-not-planned') {
+    if (e.target.closest('#move-top')) {
+      e.preventDefault();
       const n = currentDetail(); if (!n) return;
-      setStatus(n, 'not_planned').then(() => renderDetail(n));
+      if (!n.parentId) return;
+      n.parentId = null;
+      logEvent(n, 'moved', { toId: null, toTitle: '' });
+      persist(n).then(() => renderDetail(n));
       return;
     }
-    if (e.target.id === 'reopen') {
+    if (e.target.closest('#subs-toggle')) {
+      e.preventDefault();
       const n = currentDetail(); if (!n) return;
-      setStatus(n, 'open').then(() => renderDetail(n));
+      const ui = ensureDetailUI(n);
+      ui.subsCollapsed = !ui.subsCollapsed;
+      renderDetail(n);
       return;
     }
   }
@@ -843,16 +975,6 @@
       const n = currentDetail(); if (!n) return;
       clearTimeout(bodyTimer);
       if (n.body !== e.target.value) { n.body = e.target.value; persist(n); }
-      return;
-    }
-    if (e.target.id === 'parent') {
-      const n = currentDetail(); if (!n) return;
-      const val = e.target.value || null;
-      if (val === (n.parentId || null)) return; // no-op reselect
-      n.parentId = val;
-      const to = val ? byId(val) : null;
-      logEvent(n, 'moved', { toId: val, toTitle: to ? to.title : '' });
-      persist(n).then(() => renderDetail(n)); // re-render: breadcrumb + siblings move
       return;
     }
     // Renaming: a blur on the title commits the change and, when it actually
@@ -983,6 +1105,7 @@
     mount.addEventListener('click', onClick);
     mount.addEventListener('change', onChange);
     mount.addEventListener('input', onInput);
+    document.addEventListener('click', onDocClick);
     window.addEventListener('hashchange', route);
     route();
   }

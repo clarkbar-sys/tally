@@ -620,10 +620,8 @@
   /* checklist item = a checkbox row with an inline remove button */
   .check{ position: relative; }
   .check .lbl{ flex: 1 1 auto; }
-  .check .x, .tag-chip .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .55; font-size: 15px; line-height: 1; padding: 0 2px; }
-  .check .x:hover, .tag-chip .x:hover{ opacity: 1; color: var(--danger); }
-  .tag-chip{ padding-left: 4px; }
-  .tag-chip .lab{ text-shadow: none; }
+  .check .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .55; font-size: 15px; line-height: 1; padding: 0 2px; }
+  .check .x:hover{ opacity: 1; color: var(--danger); }
 
   /* a count/aside on the right of a section header (e.g. "3 of 7") */
   .section > h2 .count{ color: var(--ink); font-weight: 600; }
@@ -686,7 +684,6 @@
      ticked, a status change) hang off it as one-liners, while comments and the
      opening description are full cards. A deleted comment doesn't vanish — it
      stays as a struck-through tombstone. Nothing here is destructive. */
-  .field-label{ font-size: 12px; font-weight: 600; letter-spacing: .01em; color: var(--ink-dim); }
 
   /* status pill in the section header + timeline */
   .state{ display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; color: #fff; }
@@ -694,6 +691,106 @@
   .state.done{ background: var(--good); }
   .state.open{ background: var(--accent); }
   .state.np{ background: var(--ink-dim); }
+
+  /* ---------- detail header: state · parent · actions ----------
+     The notch section header now carries the live state pill, the parent notch
+     (when there is one) as a compact status-bearing link, and a kebab menu that
+     owns every status change. The row wraps on a narrow screen. */
+  .head-actions{ flex-wrap: wrap; justify-content: flex-end; }
+
+  .parent-chip{
+    display: inline-flex; align-items: center; gap: 6px; max-width: 15rem;
+    padding: 3px 10px 3px 6px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: var(--bg-raised);
+    color: var(--ink); text-decoration: none; font-size: 12px; font-weight: 600;
+    transition: border-color .12s ease, background .12s ease;
+  }
+  .parent-chip:hover{ border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg-raised)); }
+  .parent-chip:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  .parent-chip .pttl{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .parent-chip .pdot{
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; color: #fff;
+  }
+  .parent-chip .pdot svg{ width: 12px; height: 12px; }
+  .parent-chip .pdot.open{ background: var(--accent); }
+  .parent-chip .pdot.done{ background: var(--good); }
+  .parent-chip .pdot.np{ background: var(--ink-dim); }
+
+  /* ---------- popover menus (status / labels / add sub-notch) ----------
+     A shared kebab-triggered popover. Only one is open at a time; an outside
+     click closes it (wired in app.js). The pop is absolutely placed under its
+     trigger and never pushes layout. */
+  .menu{ position: relative; display: inline-flex; }
+  .menu-btn{
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; padding: 0; border-radius: var(--r-sm);
+    border: 1px solid var(--line-strong); background: var(--bg-raised);
+    color: var(--ink-dim); cursor: pointer; transition: border-color .12s ease, color .12s ease;
+  }
+  .menu-btn:hover{ border-color: var(--accent); color: var(--ink); }
+  .menu-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  .menu-btn.sm{ width: 28px; height: 28px; }
+  .menu-btn svg{ width: 17px; height: 17px; }
+  .menu.open .menu-btn{ border-color: var(--accent); color: var(--ink); }
+  /* the "+ Add" trigger keeps its .btn styling; just give the glyph room */
+  .add-sub svg{ width: 14px; height: 14px; }
+
+  .menu-pop{
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 40;
+    min-width: 216px; max-width: min(84vw, 300px);
+    padding: 8px; border: 1px solid var(--line-strong); border-radius: var(--r);
+    background: var(--bg-raised); box-shadow: 0 12px 30px -12px rgba(0,0,0,.55);
+    display: none;
+  }
+  .menu-pop.right{ left: auto; right: 0; }
+  .menu.open .menu-pop{ display: block; animation: bootIn .14s both ease-out; }
+  .menu-title{ font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); padding: 2px 6px 6px; }
+  .menu-sep{ height: 1px; background: var(--line); margin: 8px 0; }
+
+  .menu-item{
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    padding: 8px 8px; border: 0; border-radius: var(--r-sm); background: transparent;
+    color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .menu-item:hover{ background: color-mix(in srgb, var(--accent) 9%, var(--bg-raised)); }
+  .menu-item:focus-visible{ outline: 2px solid var(--accent); outline-offset: -2px; }
+  .menu-item svg{ width: 16px; height: 16px; flex-shrink: 0; color: var(--ink-dim); }
+  .menu-item.good svg{ color: var(--good); }
+
+  /* label popover: existing labels are remove-buttons, plus an add field */
+  .menu-labels{ display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 4px; }
+  .menu-label{
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 2px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--bg-raised-2);
+    cursor: pointer; transition: border-color .12s ease;
+  }
+  .menu-label:hover{ border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
+  .menu-label .lab{ text-shadow: none; pointer-events: none; }
+  .menu-label .x{ color: var(--ink-dim); font-size: 14px; line-height: 1; padding: 0 2px; }
+  .menu-label:hover .x{ color: var(--danger); }
+  .menu-label:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ---------- sub-notches roll-up (foot of the notch box) ----------
+     Sub-notches moved out of their own section into a collapsible roll-up under
+     the title, with an Add popover (create new / link existing). */
+  .labels-row{ display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+  .labels-chips{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 28px; padding-top: 2px; }
+
+  .subs{ border-top: 1px solid var(--line); padding-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-3); }
+  .subs-head{ display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+  .subs-toggle{
+    display: inline-flex; align-items: center; gap: 7px; padding: 4px 2px;
+    border: 0; background: none; cursor: pointer; color: var(--ink-dim);
+    font: 600 12.5px var(--font-body); letter-spacing: .01em;
+  }
+  .subs-toggle:hover{ color: var(--ink); }
+  .subs-toggle:focus-visible{ outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+  .subs-toggle .count{ color: var(--ink); }
+  .subs-toggle .caret{ display: inline-flex; color: var(--ink-faint); transition: transform .14s ease; }
+  .subs-toggle .caret svg{ width: 15px; height: 15px; }
+  .subs:not(.collapsed) .subs-toggle .caret{ transform: rotate(90deg); }
+  .subs.collapsed .subs-body{ display: none; }
 
   .timeline{ position: relative; display: flex; flex-direction: column; gap: 2px; }
   .timeline::before{ content: ""; position: absolute; left: 15px; top: 6px; bottom: 18px; width: 2px; background: var(--line-strong); }
