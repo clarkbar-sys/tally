@@ -9,18 +9,81 @@ name: pr-title
 #
 # Make this a *required* status check in the branch-protection rule for main to
 # actually block non-conventional titles from merging.
+#
+# amannn/action-semantic-pull-request is the authoritative linter, but it calls
+# the GitHub API and hard-fails when that API is unavailable (503 "No server is
+# currently available"), which would block a perfectly valid PR on a GitHub
+# outage. So its failure is non-fatal: we fall back to validating the title
+# ourselves straight from the event payload (no API call, so an outage can't
+# touch it). A valid title then passes the check and leaves a sticky comment
+# noting the linter was skipped; an actually-invalid title still fails.
 
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
 
 permissions:
-  pull-requests: read
+  pull-requests: write
 
 jobs:
   lint-title:
     runs-on: ubuntu-latest
     steps:
-      - uses: amannn/action-semantic-pull-request@v5
+      - id: lint
+        uses: amannn/action-semantic-pull-request@v5
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The linter failed. Decide whether that's a bad title or just a flaky
+      # GitHub API by checking the title ourselves — read from an env var (never
+      # interpolated into the shell) so a crafted title can't inject commands.
+      - id: fallback
+        if: steps.lint.outcome == 'failure'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Conventional Commits: type(optional scope)(optional !): subject
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+'
+          if printf '%s' "$PR_TITLE" | grep -qE "$pattern"; then
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Title is valid but the linter couldn't run: transient GitHub issue.
+      # Pass the job, but leave a visible note that the real lint was skipped.
+      - if: steps.lint.outcome == 'failure' && steps.fallback.outputs.valid == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        continue-on-error: true # posting the note must never fail the check itself
+        with:
+          header: pr-title-lint
+          message: |
+            ⚠️ **PR-title linter skipped — GitHub API was unavailable.**
+
+            `amannn/action-semantic-pull-request` couldn't reach GitHub's API (a
+            transient `No server is currently available` error), so it was
+            skipped. A local fallback check confirmed this PR title is a valid
+            [Conventional Commit](https://www.conventionalcommits.org/), so this
+            check is passing.
+
+            Re-run this workflow once GitHub's API recovers if you want the
+            authoritative lint to run.
+
+      # Title is genuinely not conventional. Fail, and say why (title via env,
+      # not interpolated into the shell).
+      - if: steps.lint.outcome == 'failure' && steps.fallback.outputs.valid != 'true'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "::error::PR title is not a valid Conventional Commit: $PR_TITLE"
+          exit 1
+
+      # Linter ran and passed: clear any stale "linter skipped" note from an
+      # earlier degraded run so the thread reflects the current, healthy state.
+      - if: steps.lint.outcome == 'success'
+        uses: marocchino/sticky-pull-request-comment@v2
+        continue-on-error: true # cleanup is best-effort; never fail a green check
+        with:
+          header: pr-title-lint
+          delete: true
