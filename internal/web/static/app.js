@@ -1155,9 +1155,9 @@
   }
 
   // ---------- intro dismissal ----------
-  // The top-level views (Notches / Tallies / Ledger) show a one-line explainer
-  // under the header — useful the first time, noise after that. Dismissing one
-  // persists per browser, like the theme choice, keyed by view id.
+  // The top-level views (Notches / Tallies / Ledger / Apps) show a one-line
+  // explainer under the header — useful the first time, noise after that.
+  // Dismissing one persists per browser, like the theme choice, keyed by view id.
   const LEDE_KEY = 'tally.dismissedLedes';
   function dismissedLedes() {
     try { return new Set(JSON.parse(localStorage.getItem(LEDE_KEY) || '[]')); } catch (e) { return new Set(); }
@@ -2134,7 +2134,7 @@
   }
 
   function renderApps() {
-    const intro = '<p class="lede">Applications — the registered actors that can author tallies. An app never writes to your data directly; it proposes, and you merge. Scopes decide what each app may read and propose; revoke one to freeze its access.</p>';
+    const intro = ledeHTML('apps', 'Applications — the registered actors that can author tallies. An app never writes to your data directly; it proposes, and you merge. Scopes decide what each app may read and propose; revoke one to freeze its access.');
     const list = sortedApps().map(appCardHTML).join('');
     view().innerHTML = intro +
       '<section class="section"><h2><span>Applications</span>' +
