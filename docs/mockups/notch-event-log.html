@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: GPL-2.0-or-later
+
+  MOCKUP — notch detail as a GitHub-issue-style event log.
+
+  Static, self-contained, no JS wiring. This explores a redesign of the notch
+  detail view: instead of separate Description / Tags / Sub-notches / Comments
+  boxes where things can be deleted and vanish, the notch keeps a single
+  chronological TIMELINE. Every action is a permanent event — a label added,
+  a label removed, a comment written, a comment deleted, a status change — so
+  the notch carries its own paper trail, exactly like a GitHub issue. Nothing
+  ever disappears from the record.
+
+  Colours/type are lifted from the app's Paper (default) theme in
+  internal/web/static/app.css so this reads as real tally, not a stranger. -->
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>tally — notch event log (mockup)</title>
+<style>
+  :root{
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+    --r:9px; --r-sm:6px;
+    --font-mono: ui-monospace,'SF Mono','Cascadia Mono','JetBrains Mono','Roboto Mono',Menlo,Consolas,monospace;
+    --font-ui: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+
+    color-scheme: light;
+    --bg:#ece0c8; --bg-raised:#f5eeda; --bg-raised-2:#e3d5b8;
+    --ink:#33291a; --ink-dim:#6f6144; --ink-faint:#94825f;
+    --line:#d8c8a4; --line-strong:#c3ad82;
+    --accent:#b23a2a; --accent-strong:#c94e39; --accent-ink:#fbf6e8;
+    --accent-tint:#e9d3c0; --accent-glow:rgba(178,58,42,.14); --accent-glow-hot:rgba(201,78,57,.28);
+    --good:#3f8a55; --danger:#99311f; --warn:#9a6b18;
+    --lab-red:#c0392b; --lab-amber:#9a6b18; --lab-green:#3f8a55;
+    --lab-blue:#3a5f9e; --lab-pink:#a4478f; --lab-cyan:#2f8a86;
+    --font-display:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,'Times New Roman',serif;
+    --font-body: var(--font-ui);
+    --grid: rgba(120,95,55,.07);
+    --lab-ink:#33291a;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:
+      radial-gradient(820px 460px at 50% -8%, var(--accent-tint), transparent 62%),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+      var(--bg);
+    background-size:auto,30px 30px,30px 30px,auto;
+    background-attachment:fixed;
+    color:var(--ink); font-family:var(--font-body); font-size:14px; line-height:1.45;
+    letter-spacing:.01em; -webkit-font-smoothing:antialiased; min-height:100vh;
+  }
+  h1,h2,h3,p{ margin:0; }
+  a{ color:var(--accent-strong); }
+  .app{ max-width:640px; margin:0 auto; padding:0 var(--sp-4) var(--sp-6); }
+
+  /* header */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3);
+    padding:var(--sp-4) 2px var(--sp-3); border-bottom:1px solid var(--line); margin-bottom:var(--sp-2);
+  }
+  .brand{
+    font-family:var(--font-display); font-weight:700; font-size:22px;
+    color:var(--ink); text-decoration:underline; text-decoration-color:var(--accent);
+    text-decoration-thickness:2px; text-underline-offset:7px; text-decoration-skip-ink:none;
+  }
+  .mock-tag{
+    font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--accent-strong); border:1px solid color-mix(in srgb,var(--accent) 42%,var(--line));
+    background:var(--accent-tint); border-radius:var(--r-sm); padding:4px 8px;
+  }
+  .crumbs{ color:var(--ink-dim); font-size:13px; margin:var(--sp-4) 2px var(--sp-2); }
+  .crumbs a{ text-decoration:none; } .crumbs a:hover{ text-decoration:underline; }
+  .crumb-sep{ color:var(--ink-faint); opacity:.7; }
+
+  /* notch header block: title + status */
+  .notch-head{ padding:var(--sp-3) 2px var(--sp-4); border-bottom:1px solid var(--line); margin-bottom:var(--sp-5); }
+  .notch-title{ font-family:var(--font-display); font-weight:600; font-size:26px; line-height:1.2; }
+  .notch-sub{ display:flex; align-items:center; flex-wrap:wrap; gap:8px var(--sp-3); margin-top:var(--sp-3); font-size:12.5px; color:var(--ink-dim); }
+  .state{
+    display:inline-flex; align-items:center; gap:6px; border-radius:999px;
+    padding:5px 12px; font-size:12px; font-weight:700; color:#fff;
+  }
+  .state.done{ background:var(--good); }
+  .state.open{ background:var(--accent); }
+  .state svg{ width:13px; height:13px; }
+  .notch-sub b{ color:var(--ink); font-weight:600; }
+
+  /* labels */
+  .lab{
+    display:inline-flex; align-items:center; gap:5px; border-radius:999px;
+    padding:2px 9px 2px 8px; font-size:11px; font-weight:600; letter-spacing:.01em;
+    border:1px solid color-mix(in srgb,var(--lc) 42%,var(--line));
+    color:color-mix(in srgb,var(--lc) 74%,var(--lab-ink) 26%);
+    background:color-mix(in srgb,var(--lc) 13%,transparent);
+  }
+  .lab::before{ content:""; width:7px; height:7px; border-radius:50%; background:var(--lc); flex-shrink:0; }
+  .lab.red{--lc:var(--lab-red);} .lab.amber{--lc:var(--lab-amber);} .lab.green{--lc:var(--lab-green);}
+  .lab.blue{--lc:var(--lab-blue);} .lab.pink{--lc:var(--lab-pink);} .lab.cyan{--lc:var(--lab-cyan);}
+  .lab.gray{--lc:var(--ink-dim);}
+
+  /* ---------- the timeline ---------- */
+  /* One vertical rail runs the length of the log; every event hangs off it.
+     Rich events (the opening description, comments) are full cards; everything
+     else is a quiet one-line row. */
+  .timeline{ position:relative; display:flex; flex-direction:column; gap:2px; }
+  .timeline::before{
+    content:""; position:absolute; left:15px; top:6px; bottom:24px; width:2px;
+    background:var(--line-strong);
+  }
+
+  .ev{ position:relative; padding-left:44px; }
+
+  /* the icon badge sitting on the rail */
+  .ev .icon{
+    position:absolute; left:2px; top:0; width:28px; height:28px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--bg-raised-2); border:1px solid var(--line-strong); color:var(--ink-dim);
+  }
+  .ev .icon svg{ width:15px; height:15px; }
+  .ev.accent .icon{ background:var(--accent-tint); border-color:color-mix(in srgb,var(--accent) 42%,var(--line)); color:var(--accent-strong); }
+  .ev.good .icon{ background:color-mix(in srgb,var(--good) 15%,var(--bg-raised)); border-color:color-mix(in srgb,var(--good) 45%,var(--line)); color:var(--good); }
+  .ev.danger .icon{ background:color-mix(in srgb,var(--danger) 12%,var(--bg-raised)); border-color:color-mix(in srgb,var(--danger) 40%,var(--line)); color:var(--danger); }
+
+  /* one-line "small" event */
+  .ev.small{ padding-top:5px; padding-bottom:5px; min-height:34px; display:flex; align-items:center; }
+  .ev.small .line{ font-size:12.5px; color:var(--ink-dim); line-height:1.4; }
+  .ev.small .line b{ color:var(--ink); font-weight:600; }
+  .ev.small .when{ color:var(--ink-faint); }
+  .ev.small .when::before{ content:"·"; margin:0 6px; color:var(--ink-faint); }
+  .ev.small .strike{ text-decoration:line-through; text-decoration-color:var(--line-strong); color:var(--ink-faint); }
+
+  /* rich card event (comment / opening description) */
+  .ev.card{ padding-top:var(--sp-2); padding-bottom:var(--sp-2); }
+  .ev .box{
+    border:1px solid var(--line-strong); border-radius:var(--r); background:var(--bg-raised); overflow:hidden;
+  }
+  .ev.accent .box{ border-color:color-mix(in srgb,var(--accent) 30%,var(--line-strong)); }
+  .box-head{
+    display:flex; align-items:center; justify-content:space-between; gap:var(--sp-2);
+    padding:8px 12px; background:var(--bg-raised-2); border-bottom:1px solid var(--line);
+    font-size:12px; color:var(--ink-dim);
+  }
+  .box-head b{ color:var(--ink); font-weight:600; }
+  .box-head .when{ font-variant-numeric:tabular-nums; color:var(--ink-faint); }
+  .box-body{ padding:var(--sp-3) 12px; color:var(--ink); font-size:13.5px; line-height:1.6; }
+  .box-body > :first-child{ margin-top:0; } .box-body > :last-child{ margin-bottom:0; }
+  .box-body p{ margin:0 0 var(--sp-3); }
+  .box-body ul{ margin:0; padding-left:1.3em; display:flex; flex-direction:column; gap:5px; }
+  .box-body li.task{ list-style:none; margin-left:-1.3em; display:flex; align-items:flex-start; gap:9px; }
+  .box-body code{ font-family:var(--font-mono); font-size:.88em; background:var(--bg-raised-2); border:1px solid var(--line); border-radius:var(--r-sm); padding:1px 5px; }
+  .box-body strong{ font-weight:700; }
+
+  /* mini checkbox in rendered task lists */
+  .tick{ width:17px; height:17px; flex-shrink:0; border-radius:5px; border:1.5px solid var(--ink-dim); margin-top:1px;
+    display:flex; align-items:center; justify-content:center; background:var(--bg); }
+  .tick svg{ width:11px; height:11px; color:#fff; opacity:0; }
+  .tick.on{ background:var(--good); border-color:var(--good); }
+  .tick.on svg{ opacity:1; }
+  li.task.on .lbl{ color:var(--ink-faint); text-decoration:line-through; text-decoration-color:var(--line-strong); }
+
+  /* "deleted" comment — kept in the log, struck through, dimmed */
+  .ev.deleted .box{ background:var(--bg); border-style:dashed; opacity:.85; }
+  .ev.deleted .box-head{ background:transparent; }
+  .ev.deleted .box-body{ color:var(--ink-faint); font-style:italic; }
+  .tombstone{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--danger); }
+
+  /* the composer pinned at the end of the log */
+  .composer{ position:relative; padding-left:44px; margin-top:var(--sp-4); }
+  .composer .icon{
+    position:absolute; left:2px; top:0; width:28px; height:28px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--accent); border:1px solid var(--accent); color:var(--accent-ink);
+  }
+  .composer .icon svg{ width:15px; height:15px; }
+  .composer-box{ border:1px solid var(--line-strong); border-radius:var(--r); background:var(--bg-raised); overflow:hidden; }
+  .composer textarea{
+    width:100%; border:0; background:transparent; color:var(--ink); resize:vertical;
+    min-height:84px; padding:var(--sp-3) 12px; font:inherit; outline:none;
+  }
+  .composer textarea::placeholder{ color:var(--ink-faint); }
+  .composer-foot{
+    display:flex; align-items:center; justify-content:space-between; gap:var(--sp-2);
+    padding:8px 10px; border-top:1px solid var(--line); background:var(--bg-raised-2);
+  }
+  .quick{ display:flex; gap:6px; flex-wrap:wrap; }
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    border:1px solid transparent; border-radius:var(--r-sm); padding:8px 14px;
+    font:600 13px var(--font-body); cursor:pointer;
+  }
+  .btn.primary{ background:var(--accent); color:var(--accent-ink); }
+  .btn.ghost{ background:transparent; color:var(--ink); border-color:var(--line-strong); }
+  .btn.ghost:hover{ border-color:var(--accent); color:var(--accent-strong); }
+  .btn.sm{ padding:6px 10px; font-size:12px; }
+
+  .note{
+    margin:var(--sp-5) 0 0; padding:var(--sp-3) var(--sp-4); border-radius:var(--r);
+    border:1px dashed var(--line-strong); background:color-mix(in srgb,var(--bg-raised) 60%,transparent);
+    color:var(--ink-dim); font-size:12.5px; line-height:1.6;
+  }
+  .note b{ color:var(--ink); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <span class="brand">tally</span>
+    <span class="mock-tag">mockup · event log</span>
+  </div>
+
+  <p class="crumbs">← <a href="#">all notches</a> <span class="crumb-sep">/</span> <a href="#">Kitchen renovation</a></p>
+
+  <!-- notch header: title + live status + current labels -->
+  <div class="notch-head">
+    <h1 class="notch-title">Repaint the hallway</h1>
+    <div class="notch-sub">
+      <span class="state done">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>
+        Done
+      </span>
+      <span><b>you</b> opened this notch · 3 events ago</span>
+      <span class="lab blue">demo</span>
+      <span class="lab amber">errand</span>
+    </div>
+  </div>
+
+  <!-- the timeline -->
+  <div class="timeline">
+
+    <!-- opening event: the description, as the first card -->
+    <div class="ev card accent">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      </span>
+      <div class="box">
+        <div class="box-head"><span><b>you</b> opened this notch</span><span class="when">2026-07-14 09:12</span></div>
+        <div class="box-body">
+          <p>Hallway paint is scuffed by the front door. Pick a colour, buy supplies, do it over a weekend.</p>
+          <ul>
+            <li class="task on"><span class="tick on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg></span><span class="lbl">Pick a colour</span></li>
+            <li class="task on"><span class="tick on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg></span><span class="lbl">Buy paint &amp; rollers</span></li>
+            <li class="task on"><span class="tick on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg></span><span class="lbl">Two coats</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- label added -->
+    <div class="ev small accent">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor"/></svg>
+      </span>
+      <span class="line"><b>you</b> added the <span class="lab amber">errand</span> label <span class="when">2026-07-14 09:13</span></span>
+    </div>
+
+    <!-- comment -->
+    <div class="ev card">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+      </span>
+      <div class="box">
+        <div class="box-head"><span><b>you</b> commented</span><span class="when">2026-07-15 18:40</span></div>
+        <div class="box-body"><p>Went with <strong>Farrow &amp; Ball "Cornforth White"</strong>. One tin should cover it, grabbing a spare just in case.</p></div>
+      </div>
+    </div>
+
+    <!-- task checked -->
+    <div class="ev small good">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>
+      </span>
+      <span class="line"><b>you</b> checked off <b>Pick a colour</b> <span class="when">2026-07-15 18:41</span></span>
+    </div>
+
+    <!-- label removed — the event stays even though the label is gone -->
+    <div class="ev small">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8Z"/><path d="M2 2l20 20"/></svg>
+      </span>
+      <span class="line"><b>you</b> removed the <span class="lab green">urgent</span> label <span class="when">2026-07-16 08:02</span></span>
+    </div>
+
+    <!-- a deleted comment: NOT gone. A tombstone stays in the record. -->
+    <div class="ev card deleted danger">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg>
+      </span>
+      <div class="box">
+        <div class="box-head"><span class="tombstone">deleted comment</span><span class="when">2026-07-16 08:05</span></div>
+        <div class="box-body"><p>~~Actually let's just hire someone~~ — <b>you</b> deleted this comment.</p></div>
+      </div>
+    </div>
+
+    <!-- more tasks done -->
+    <div class="ev small good">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>
+      </span>
+      <span class="line"><b>you</b> checked off <b>Buy paint &amp; rollers</b> and <b>Two coats</b> <span class="when">2026-07-19 16:20</span></span>
+    </div>
+
+    <!-- closed as done -->
+    <div class="ev small good">
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>
+      </span>
+      <span class="line"><b>you</b> closed this notch as <b>done</b> <span class="when">2026-07-19 16:21</span></span>
+    </div>
+
+  </div>
+
+  <!-- composer at the tail of the log -->
+  <div class="composer">
+    <span class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+    </span>
+    <div class="composer-box">
+      <textarea placeholder="Leave a comment (Markdown supported)…"></textarea>
+      <div class="composer-foot">
+        <div class="quick">
+          <button class="btn ghost sm" type="button">＋ Label</button>
+          <button class="btn ghost sm" type="button">＋ Sub-notch</button>
+          <button class="btn ghost sm" type="button">↻ Reopen</button>
+        </div>
+        <button class="btn primary" type="button">Comment</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    <b>The idea:</b> the notch keeps a single, permanent <b>timeline</b> instead of separate
+    Description / Tags / Comments boxes. Comments are full cards; label changes, task ticks,
+    renames and status changes are quiet one-liners on the same rail. A <b>deleted comment
+    doesn't vanish</b> — it leaves a struck-through tombstone in the record, the way a GitHub
+    issue never loses its history. Editing (title, description, current labels) still happens
+    at the top; the log below is the story of how the notch got there.
+  </p>
+
+</div>
+</body>
+</html>
