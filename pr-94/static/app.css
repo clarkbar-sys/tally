@@ -1,0 +1,1122 @@
+  /* ---------- tally — themeable design system ----------
+     One component layer, many themes. Every color, font and texture the UI
+     draws is read from a CSS custom property (a "token"); a theme is nothing
+     but a block that fills those tokens. Components below never hardcode a
+     colour — they reference tokens only — so a new theme is authored purely
+     by refilling the contract, with no component edits.
+
+     Two tiers of token:
+       • System tokens (:root) — spacing + radius. Shared by every theme,
+         never overridden. These set rhythm, not identity.
+       • Theme tokens (the THEME CONTRACT block) — surfaces, ink, lines,
+         accent, status, label hues, type, and the FX budget. A theme owns
+         all of these.
+
+     The default theme is Amber CRT — an amber-phosphor terminal on near-black
+     glass, a vintage CRT + Bloomberg-terminal motif: dense monospace chrome,
+     amber text, a command line and a status ticker. It carries a deliberate
+     "FX budget" — phosphor bloom, blueprint grid, film grain, scanlines,
+     vignette and a slow CRT beam — spent where it earns its keep (bloom on
+     identity/display text, everything else dialled down and slowed so content
+     stays crisp). All of that budget is expressed as tokens (--phosphor,
+     --grid, --grain-opacity, --scan-opacity, --beam-opacity), so a calmer
+     theme simply dials them toward 0/none and the CRT character disappears
+     without touching a single component rule. All motion also sits behind
+     prefers-reduced-motion.
+
+     See docs/theming.md for the full contract and a copy-paste template for
+     adding a theme. */
+
+  /* ---- System tokens: shared by every theme, never overridden ---- */
+  :root{
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+    --r: 9px;          /* GitHub-ish soft corner; small chips round further */
+    --r-sm: 6px;
+    /* Utility faces shared by every theme: a monospace for aligned digits and a
+       system-UI sans for the clean register. A theme still owns --font-body /
+       --font-display; these are just the fallbacks a component can reach for
+       directly (e.g. tabular counts) regardless of theme. */
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+    --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  /* ================= THEME CONTRACT ==================================
+     A theme fills exactly the slots below. `:root` carries the default
+     (Paper) so the app is fully themed even with no data-theme attribute
+     set; the identical block is also tagged [data-theme="paper"] so a
+     theme switcher can select it by name.
+
+     To add a theme: copy this whole block, change the selector to
+     html[data-theme="your-name"], set color-scheme (dark|light), and refill
+     every slot. Set colours nowhere else — components read only tokens.
+     For a calm/flat theme, dial the FX budget toward 0/none.
+
+     Selectors are `html[data-theme="…"]`, not a bare `[data-theme="…"]`, on
+     purpose: `:root` (which carries the Paper default below) matches the html
+     element unconditionally at the same specificity as a lone attribute
+     selector, so a bare `[data-theme]` block placed before the Paper `:root`
+     rule loses to it and the theme silently doesn't apply. The `html` type
+     prefix adds the extra specificity that lets a selected theme win from any
+     position in the file. Keep it on every theme.
+     ================================================================== */
+  html[data-theme="amber-crt"]{
+    color-scheme: dark;
+
+    /* Surfaces — page, raised panel, deepest inset */
+    --bg: #0a0703;
+    --bg-raised: #120d05;
+    --bg-raised-2: #191108;
+
+    /* Ink — primary, dimmed, faint text */
+    --ink: #f6c983;
+    --ink-dim: #b98f4e;
+    --ink-faint: #a37e49;
+
+    /* Lines — hairline, stronger divider */
+    --line: #2c2110;
+    --line-strong: #453515;
+
+    /* Accent — the interactive/identity hue */
+    --accent: #ffb000;
+    --accent-strong: #ffce5c;
+    --accent-ink: #140b00;        /* text/icon that sits ON the accent */
+    --accent-tint: #241804;       /* faint accent wash behind surfaces */
+    --accent-glow: rgba(255,176,0,.18);
+    --accent-glow-hot: rgba(255,206,92,.55);
+
+    /* Status */
+    --good: #4fc586;
+    --danger: #ff6f5e;
+    --warn: #e6a24b;
+
+    /* Label hues — tag chips */
+    --lab-red: #ff6f5e;
+    --lab-amber: #f0a838;
+    --lab-green: #4fc586;
+    --lab-blue: #97a6ff;
+    --lab-pink: #e08adf;
+    --lab-cyan: #5ad6d0;
+
+    /* Type — display (serif) + body (mono) stacks */
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --font-body: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+
+    /* ---- FX budget — dial toward 0/none for a calm theme ---- */
+    /* Phosphor bloom — soft halo on identity/display text ("none" kills it) */
+    --phosphor: 0 0 6px rgba(255,176,0,.28);
+    /* Flash — a hotter spark for live/danger accents */
+    --flash: #ff7a3d;
+    --flash-glow: rgba(255,122,61,.55);
+    --danger-glow: rgba(255,111,94,.5);
+    /* Grunge/CRT texture knobs (0 = off) */
+    --grid: rgba(255,176,0,.028);   /* blueprint grid line colour+alpha */
+    --grain-opacity: .035;          /* film grain overlay */
+    --scan-opacity: .08;            /* scanlines + vignette overlay */
+    --beam-opacity: 1;              /* slow CRT beam sweep (0 = no beam) */
+
+    /* Surface/ink escapes — default to the dark-theme literals so existing
+       themes are unchanged; a light theme overrides them. */
+    --terminal-bg: #000;            /* the command-line bar background */
+    --lab-ink: #fff;                /* tag-chip text mixes toward this (lift on dark) */
+  }
+
+  /* ---- Slate — calm dark ------------------------------------------------
+     A neutral, flat dark theme in the modern app register (Linear/GitHub
+     dark): cool slate greys, one restrained blue accent, and the whole FX
+     budget switched off so nothing glows or scans. Fills the same contract
+     as Amber CRT — no component rules change. */
+  html[data-theme="slate"]{
+    color-scheme: dark;
+
+    /* Surfaces — page, raised panel, deepest inset */
+    --bg: #0d1117;
+    --bg-raised: #161b22;
+    --bg-raised-2: #1c2230;
+
+    /* Ink — primary, dimmed, faint text */
+    --ink: #e6edf3;
+    --ink-dim: #9aa7b4;
+    --ink-faint: #6e7b8a;
+
+    /* Lines — hairline, stronger divider */
+    --line: #232a35;
+    --line-strong: #30363d;
+
+    /* Accent — one restrained blue */
+    --accent: #4c8dff;
+    --accent-strong: #79a9ff;
+    --accent-ink: #0b1220;        /* dark text on the filled accent (AA on #4c8dff) */
+    --accent-tint: #121a2b;       /* faint accent wash behind surfaces */
+    --accent-glow: rgba(76,141,255,.16);
+    --accent-glow-hot: rgba(121,169,255,.4);
+
+    /* Status */
+    --good: #4fc586;
+    --danger: #ff6f5e;
+    --warn: #e6a24b;
+
+    /* Label hues — tag chips */
+    --lab-red: #ff6f5e;
+    --lab-amber: #f0a838;
+    --lab-green: #4fc586;
+    --lab-blue: #97a6ff;
+    --lab-pink: #e08adf;
+    --lab-cyan: #5ad6d0;
+
+    /* Type — display (serif) + body (mono) stacks */
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --font-body: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+
+    /* FX budget — off: flat, no glow/grain/scanlines/beam */
+    --phosphor: none;
+    --flash: #ff7a3d;
+    --flash-glow: rgba(255,122,61,.4);
+    --danger-glow: rgba(255,111,94,.4);
+    --grid: transparent;
+    --grain-opacity: 0;
+    --scan-opacity: 0;
+    --beam-opacity: 0;
+  }
+
+  /* ---- Paper / Almanac — warm light (default theme) ---------------------
+     tally's first light theme: an old almanac page. Aged cream paper, dark
+     sepia ink, a red-letter accent, and a faint ruled grid instead of CRT
+     grunge. The FX budget is off except that hairline grid. The command-line
+     bar becomes a sunken paper field (--terminal-bg light) and tag-chip text
+     darkens (--lab-ink dark) so both read on paper. Carried by `:root` as
+     tally's default. */
+  :root,
+  html[data-theme="paper"]{
+    color-scheme: light;
+
+    /* Surfaces — page, raised leaf, deeper inset */
+    --bg: #ece0c8;
+    --bg-raised: #f5eeda;
+    --bg-raised-2: #e3d5b8;
+
+    /* Ink — sepia */
+    --ink: #33291a;
+    --ink-dim: #6f6144;
+    --ink-faint: #94825f;
+
+    /* Lines — soft ruled */
+    --line: #d8c8a4;
+    --line-strong: #c3ad82;
+
+    /* Accent — red-letter red */
+    --accent: #b23a2a;
+    --accent-strong: #c94e39;
+    --accent-ink: #fbf6e8;        /* cream text on the red accent */
+    --accent-tint: #e9d3c0;       /* faint warm blush behind surfaces */
+    --accent-glow: rgba(178,58,42,.14);
+    --accent-glow-hot: rgba(201,78,57,.28);
+
+    /* Status */
+    --good: #3f8a55;
+    --danger: #99311f;
+    --warn: #9a6b18;
+
+    /* Label hues — deepened for a light ground */
+    --lab-red: #c0392b;
+    --lab-amber: #9a6b18;
+    --lab-green: #3f8a55;
+    --lab-blue: #3a5f9e;
+    --lab-pink: #a4478f;
+    --lab-cyan: #2f8a86;
+
+    /* Type — serif titles for the almanac character, a clean system sans for
+       body/UI so the page reads calm and modern (the "cleaner, more GitHub"
+       register). Aligned digits fall back to --font-mono at the component. */
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --font-body: var(--font-ui);
+
+    /* FX budget — flat, but keep a faint sepia rule for the ledger feel */
+    --phosphor: none;
+    --flash: #c94e39;
+    --flash-glow: rgba(201,78,57,.25);
+    --danger-glow: rgba(153,49,31,.22);
+    --grid: rgba(120,95,55,.07);
+    --grain-opacity: 0;
+    --scan-opacity: 0;
+    --beam-opacity: 0;
+
+    /* Light-theme escapes */
+    --terminal-bg: #e0d0ad;       /* sunken paper field, not a black bar */
+    --lab-ink: #33291a;           /* darken chip text for contrast on cream */
+  }
+
+  /* ---- Gruvbox — warm familiar dark -------------------------------------
+     The much-loved retro palette (morhetz/gruvbox): warm charcoal surfaces,
+     soft cream fg, a signature yellow accent, and the palette's own bright
+     ramp for tag hues. Flat, with a whisper of grain for warmth. */
+  html[data-theme="gruvbox"]{
+    color-scheme: dark;
+
+    /* Surfaces — bg0 → bg1 */
+    --bg: #282828;
+    --bg-raised: #32302f;
+    --bg-raised-2: #3c3836;
+
+    /* Ink — fg → gray */
+    --ink: #ebdbb2;
+    --ink-dim: #bdae93;
+    --ink-faint: #928374;
+
+    /* Lines — bg1 → bg2 */
+    --line: #3c3836;
+    --line-strong: #504945;
+
+    /* Accent — gruvbox yellow */
+    --accent: #d79921;
+    --accent-strong: #fabd2f;
+    --accent-ink: #282828;        /* dark text on the yellow accent */
+    --accent-tint: #32302f;
+    --accent-glow: rgba(215,153,33,.16);
+    --accent-glow-hot: rgba(250,189,47,.38);
+
+    /* Status */
+    --good: #b8bb26;
+    --danger: #fb4934;
+    --warn: #fe8019;
+
+    /* Label hues — gruvbox bright ramp */
+    --lab-red: #fb4934;
+    --lab-amber: #fabd2f;
+    --lab-green: #b8bb26;
+    --lab-blue: #83a598;
+    --lab-pink: #d3869b;
+    --lab-cyan: #8ec07c;
+
+    /* Type */
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --font-body: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+
+    /* FX budget — flat with a touch of grain */
+    --phosphor: none;
+    --flash: #fe8019;
+    --flash-glow: rgba(254,128,25,.4);
+    --danger-glow: rgba(251,73,52,.4);
+    --grid: transparent;
+    --grain-opacity: .025;
+    --scan-opacity: 0;
+    --beam-opacity: 0;
+
+    /* Terminal bar in gruvbox's darkest (bg0_h), not pure black */
+    --terminal-bg: #1d2021;
+    --lab-ink: #fbf1c7;           /* lift chip text toward gruvbox light0 */
+  }
+
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body{ margin: 0; padding: 0; }
+  body{
+    background:
+      radial-gradient(820px 460px at 50% -8%, var(--accent-tint), transparent 62%),
+      radial-gradient(1100px 680px at 50% 118%, color-mix(in srgb, var(--danger) 5%, transparent), transparent 70%),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+      var(--bg);
+    background-size: auto, auto, 30px 30px, 30px 30px, auto;
+    background-attachment: fixed;
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.45;
+    letter-spacing: .01em;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  /* ---------- grunge overlays (fixed, never blocking taps) ---------- */
+  body::before, body::after{ content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+  /* film grain */
+  body::before{
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: var(--grain-opacity);
+    mix-blend-mode: overlay;
+  }
+  /* scanlines (dialed down) + vignette */
+  body::after{
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.26) 0, rgba(0,0,0,.26) 1px, transparent 1px, transparent 4px),
+      radial-gradient(130% 120% at 50% 46%, transparent 58%, rgba(6,4,1,.5) 100%);
+    opacity: var(--scan-opacity);
+  }
+  /* CRT beam — a slow bright band sweeping down the screen */
+  .crt-beam{
+    position: fixed; inset: 0; pointer-events: none; z-index: 51; overflow: hidden;
+    opacity: var(--beam-opacity);
+  }
+  .crt-beam::before{
+    content: ""; position: absolute; left: 0; right: 0; height: 34vh; top: -34vh;
+    background: linear-gradient(180deg, transparent,
+      color-mix(in srgb, var(--accent) 2.8%, transparent) 46%,
+      color-mix(in srgb, var(--accent-strong) 5%, transparent) 50%,
+      color-mix(in srgb, var(--accent) 2.8%, transparent) 54%, transparent);
+    animation: beam 13s linear infinite;
+  }
+
+  @keyframes beam{
+    0%{ transform: translateY(0); }
+    100%{ transform: translateY(134vh); }
+  }
+  @keyframes pulseGlow{
+    0%, 100%{ box-shadow: 0 0 0 0 var(--flash-glow), 0 4px 16px -6px var(--accent-glow); }
+    50%{ box-shadow: 0 0 18px 1px var(--flash-glow), 0 6px 22px -4px var(--accent-glow-hot); }
+  }
+  /* blinking terminal cursor */
+  @keyframes caret{ 0%, 49%{ opacity: 1; } 50%, 100%{ opacity: 0; } }
+  /* boot-in — rows type on with a short slide + fade */
+  @keyframes bootIn{ from{ opacity: 0; transform: translateY(6px); } to{ opacity: 1; transform: none; } }
+  button, input, textarea, select{ font: inherit; color: inherit; }
+  h1, h2, h3, p{ margin: 0; }
+  a{ color: var(--accent-strong); }
+
+  .app{ max-width: 620px; margin: 0 auto; padding: 0 0 var(--sp-6); }
+
+  /* staggered boot-in for the stacked sections */
+  main > .section, main > .lede{ animation: bootIn .32s both ease-out; }
+  main > .lede{ animation-delay: .02s; }
+  main > .section:nth-of-type(1){ animation-delay: .06s; }
+  main > .section:nth-of-type(2){ animation-delay: .12s; }
+  main > .section:nth-of-type(3){ animation-delay: .18s; }
+  main > .section:nth-of-type(4){ animation-delay: .24s; }
+  main > .section:nth-of-type(5){ animation-delay: .30s; }
+  main > .section:nth-of-type(6){ animation-delay: .36s; }
+  main > .section:nth-of-type(7){ animation-delay: .42s; }
+  main > .section:nth-of-type(8){ animation-delay: .48s; }
+  main > .section:nth-of-type(9){ animation-delay: .54s; }
+
+  /* ---------- header ---------- */
+  .topbar{
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-4) var(--sp-3);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand{
+    font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: .01em;
+    color: var(--ink); text-shadow: 0 0 14px var(--accent-glow);
+    text-decoration-line: underline; text-decoration-color: var(--accent);
+    text-decoration-thickness: 2px; text-underline-offset: 7px; text-decoration-skip-ink: none;
+  }
+  .version{
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+    padding: 5px 10px; font-size: 11px; letter-spacing: .02em; color: var(--ink-dim);
+    white-space: nowrap;
+  }
+  .version .dot{ width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 6px color-mix(in srgb, var(--good) 60%, transparent); }
+
+  /* ---------- theme picker ---------- */
+  .topbar-right{ display: flex; align-items: center; gap: var(--sp-2); }
+  .theme-picker{ display: inline-flex; }
+  .theme-picker select{
+    appearance: none; -webkit-appearance: none;
+    background-color: var(--bg-raised); color: var(--ink-dim);
+    border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+    padding: 5px 26px 5px 10px;
+    font-size: 11.5px; letter-spacing: .01em;
+    cursor: pointer; transition: border-color .12s ease, color .12s ease;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ink-dim) 50%), linear-gradient(135deg, var(--ink-dim) 50%, transparent 50%);
+    background-position: calc(100% - 14px) center, calc(100% - 9px) center;
+    background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+  }
+  .theme-picker select:hover{ border-color: var(--accent); color: var(--ink); }
+  .theme-picker select:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* screen-reader-only label */
+  .visually-hidden{ position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+  /* ---------- status line ----------
+     Was a Bloomberg-style ticker; now one quiet, wrapping line of counts under
+     the header (open notches, items done, tags). Same info, no terminal chrome,
+     and it never clips on a narrow screen. */
+  .ticker{
+    display: flex; flex-direction: column; gap: 6px;
+    margin: var(--sp-3) var(--sp-4) 0;
+    font-size: 12.5px; color: var(--ink-dim);
+  }
+  /* the "Stats" roll-up toggle — same button pattern as the sub-notches roll-up */
+  .stats-toggle{
+    display: inline-flex; align-items: center; gap: 7px; padding: 4px 2px;
+    border: 0; background: none; cursor: pointer; color: var(--ink-dim); align-self: flex-start;
+    font: 600 12.5px var(--font-body); letter-spacing: .01em;
+  }
+  .stats-toggle:hover{ color: var(--ink); }
+  .stats-toggle:focus-visible{ outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+  .stats-toggle .caret{ display: inline-flex; color: var(--ink-faint); transition: transform .14s ease; }
+  .stats-toggle .caret svg{ width: 15px; height: 15px; }
+  .ticker:not(.collapsed) .stats-toggle .caret{ transform: rotate(90deg); }
+  .ticker.collapsed .stats-body{ display: none; }
+  .stats-body{ display: flex; flex-wrap: wrap; gap: 4px var(--sp-3); align-items: baseline; }
+  .ticker .stat{ display: inline-flex; gap: 5px; align-items: baseline; }
+  .ticker .stat + .stat::before{ content: "·"; color: var(--ink-faint); margin-right: var(--sp-3); }
+  .ticker .stat b{ color: var(--ink); font-weight: 600; }
+  .ticker .stat .up{ color: var(--good); } .ticker .stat .dn{ color: var(--danger); }
+
+  /* ---------- demo banner ----------
+     tally runs in demo mode: nothing is persisted. This slim, accented bar
+     says so plainly and offers a Reset back to the seed data. */
+  .demo-bar{
+    display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+    margin: var(--sp-3) var(--sp-4) 0;
+    padding: 7px 8px 7px 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+    border-radius: var(--r-sm);
+    background: var(--accent-tint);
+    font-size: 12.5px; color: var(--ink-dim);
+  }
+  .demo-bar-msg{ flex: 1 1 auto; }
+  .demo-bar-msg b{
+    color: var(--accent-strong); font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em; font-size: 10.5px;
+    margin-right: 6px;
+  }
+  .demo-bar #demo-reset{ flex: 0 0 auto; }
+  @media (max-width: 560px){
+    .demo-bar{ margin-left: var(--sp-3); margin-right: var(--sp-3); }
+  }
+
+  main{ padding: 0 var(--sp-4); }
+  .lede{
+    display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3);
+    color: var(--ink-dim); font-size: 13px; margin: var(--sp-4) 2px var(--sp-2);
+  }
+  .lede-x{
+    flex: 0 0 auto; appearance: none; border: none; background: none; cursor: pointer;
+    color: var(--ink-faint); font-size: 16px; line-height: 1; padding: 2px 4px; margin: -2px -4px 0 0;
+    border-radius: 4px;
+  }
+  .lede-x:hover{ color: var(--ink-dim); background: var(--bg-raised-2); }
+
+  /* ---------- sections ---------- */
+  /* No section-level overflow:hidden: a menu-pop (labels, status, sub-notches)
+     is an absolutely-positioned child that's meant to float over whatever's
+     below it, and an ancestor clip would cut it off once it grows taller than
+     the remaining box below its trigger (as the labels popover's "All labels"
+     list can). The header's flush top corners get their own radius instead of
+     leaning on the section to clip them. */
+  .section{ position: relative; margin-top: var(--sp-4); border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg-raised); }
+  /* Promotes a section above its later siblings while one of its popovers is
+     open — see the closeMenuEl/openMenuEl note in app.js for why this needs
+     to be explicit rather than the popover's own z-index alone. */
+  .section.pop-elevated{ z-index: 5; }
+  .section > h2{
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--bg-raised-2);
+    color: var(--ink-dim);
+    padding: 10px 14px; font-size: 12.5px; font-weight: 600; letter-spacing: .01em;
+    border-bottom: 1px solid var(--line);
+    border-top-left-radius: calc(var(--r) - 1px); border-top-right-radius: calc(var(--r) - 1px);
+  }
+  .section > h2 > span:first-child{ color: var(--ink-dim); }
+  .section-body{ padding: var(--sp-4); background: var(--bg-raised); display: flex; flex-direction: column; gap: var(--sp-4); }
+  .row{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+  .stack{ display: flex; flex-direction: column; gap: var(--sp-3); }
+  .swatch-note{ font-size: 12.5px; color: var(--ink-faint); letter-spacing: .01em; }
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    border: 1px solid transparent; border-radius: var(--r-sm);
+    padding: 9px 15px; font-size: 13px; font-weight: 600; letter-spacing: .01em;
+    cursor: pointer; transition: transform .08s ease, background .12s ease, border-color .12s ease;
+  }
+  .btn:active{ transform: translateY(1px); }
+  .btn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn.primary{ background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 16px -8px var(--accent-glow-hot); }
+  .btn.primary:hover{ background: var(--accent-strong); }
+  .btn.ghost{ background: transparent; color: var(--ink); border-color: var(--line-strong); }
+  .btn.ghost:hover{ border-color: var(--accent); color: var(--accent-strong); }
+  .btn.danger{ background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+  .btn.danger:hover{ background: color-mix(in srgb, var(--danger) 12%, transparent); }
+  .btn.sm{ padding: 7px 11px; font-size: 12.5px; }
+  .btn:disabled{ opacity: .4; cursor: not-allowed; }
+
+  /* ---------- checkbox ---------- */
+  .check{ display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .check input{ position: absolute; opacity: 0; width: 0; height: 0; }
+  .check .box{
+    width: 20px; height: 20px; flex-shrink: 0; border-radius: var(--r);
+    border: 1.5px solid var(--ink-dim); background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  .check .box svg{ width: 13px; height: 13px; color: var(--accent-ink); opacity: 0; transition: opacity .1s ease; }
+  .check input:checked + .box{ background: var(--good); border-color: var(--good); box-shadow: 0 0 12px -1px rgba(79,197,134,.6); }
+  .check input:checked + .box svg{ opacity: 1; }
+  .check input:focus-visible + .box{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  .check.strike input:checked ~ .lbl{ color: var(--ink-faint); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+
+  /* ---------- radio ---------- */
+  .radio{ display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .radio input{ position: absolute; opacity: 0; width: 0; height: 0; }
+  .radio .dot{
+    width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%;
+    border: 1.5px solid var(--ink-dim); background: var(--bg);
+    display: flex; align-items: center; justify-content: center; transition: border-color .12s ease;
+  }
+  .radio .dot::after{ content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); transform: scale(0); transition: transform .12s ease; }
+  .radio input:checked + .dot{ border-color: var(--accent); }
+  .radio input:checked + .dot{ box-shadow: 0 0 10px -3px var(--accent-glow-hot); }
+  .radio input:checked + .dot::after{ transform: scale(1); box-shadow: 0 0 8px 0 var(--accent-glow-hot); }
+  .radio input:focus-visible + .dot{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- toggle switch ---------- */
+  .switch{ display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .switch input{ position: absolute; opacity: 0; width: 0; height: 0; }
+  .switch .track{
+    width: 42px; height: 24px; flex-shrink: 0; border-radius: 999px;
+    background: var(--bg); border: 1px solid var(--line-strong); position: relative; transition: background .14s ease, border-color .14s ease;
+  }
+  .switch .track::after{
+    content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--ink-dim); transition: transform .16s cubic-bezier(.32,.72,0,1), background .14s ease;
+  }
+  .switch input:checked + .track{ background: color-mix(in srgb, var(--accent) 30%, var(--bg)); border-color: var(--accent); box-shadow: 0 0 12px -3px var(--accent-glow-hot), inset 0 0 10px -6px var(--accent-glow-hot); }
+  .switch input:checked + .track::after{ transform: translateX(18px); background: var(--accent-strong); box-shadow: 0 0 8px 0 var(--accent-glow-hot); }
+  .switch input:focus-visible + .track{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- fields ---------- */
+  label.field{ display: flex; flex-direction: column; gap: 6px; }
+  label.field > span{ font-size: 12px; font-weight: 600; letter-spacing: .01em; color: var(--ink-dim); }
+  .input, .textarea, .select{
+    width: 100%; background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line-strong); border-radius: var(--r); padding: 10px 12px;
+  }
+  .input::placeholder, .textarea::placeholder{ color: var(--ink-faint); }
+  .textarea{ min-height: 76px; resize: vertical; }
+  .select{ appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--ink-dim) 50%), linear-gradient(135deg, var(--ink-dim) 50%, transparent 50%); background-position: calc(100% - 16px) center, calc(100% - 11px) center; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+  .input:focus, .textarea:focus, .select:focus{ outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+
+  /* ---------- chips + labels ---------- */
+  .lab{
+    display: inline-flex; align-items: center; gap: 5px; border-radius: 999px;
+    padding: 2px 9px 2px 8px; font-size: 11px; font-weight: 600; letter-spacing: .01em;
+    border: 1px solid color-mix(in srgb, var(--lc) 42%, var(--line));
+    color: color-mix(in srgb, var(--lc) 74%, var(--lab-ink) 26%);
+    background: color-mix(in srgb, var(--lc) 13%, transparent);
+  }
+  .lab::before{ content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--lc); flex-shrink: 0; }
+  .lab.red{ --lc: var(--lab-red); } .lab.amber{ --lc: var(--lab-amber); } .lab.green{ --lc: var(--lab-green); }
+  .lab.blue{ --lc: var(--lab-blue); } .lab.pink{ --lc: var(--lab-pink); } .lab.cyan{ --lc: var(--lab-cyan); }
+  .lab.gray{ --lc: var(--ink-dim); }
+  .lab.open{ --lc: var(--good); }
+  .lab.add{ --lc: var(--ink-dim); color: var(--ink-dim); border-style: dashed; background: transparent; cursor: pointer; }
+  .lab.add::before{ display: none; }
+  /* a custom-colored label (its own picked bg/fg, set inline) skips the dot —
+     the whole pill is already that color, so a same-color dot would vanish */
+  .lab.custom::before{ display: none; }
+
+  .chip{ display: inline-flex; align-items: center; gap: 6px; background: var(--bg-raised-2); color: var(--ink-dim); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 10px; font-size: 12px; font-weight: 600; }
+  .chip .x{ border: none; background: none; color: inherit; cursor: pointer; opacity: .6; font-size: 13px; line-height: 1; padding: 0; }
+  .chip .x:hover{ opacity: 1; }
+
+  /* ---------- segmented control ---------- */
+  .seg{ display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; }
+  .seg button{ border: none; background: transparent; color: var(--ink-dim); padding: 7px 14px; font-size: 12.5px; font-weight: 600; letter-spacing: .01em; cursor: pointer; }
+  .seg button[aria-pressed="true"]{ background: linear-gradient(180deg, var(--accent-strong), var(--accent) 60%, color-mix(in srgb, var(--accent) 82%, #7a3d00)); color: var(--accent-ink); box-shadow: 0 0 14px -4px var(--accent-glow-hot), inset 0 1px 0 rgba(255,255,255,.22); }
+
+  /* ---------- card ---------- */
+  .card{ background: var(--bg-raised-2); border: 1px solid var(--line-strong); border-radius: var(--r); padding: var(--sp-3) var(--sp-4); }
+  .card .title{ font-family: var(--font-display); font-weight: 600; font-size: 17px; text-shadow: var(--phosphor); }
+  .card .meta{ font-size: 12px; color: var(--ink-dim); letter-spacing: .01em; margin-top: 6px; }
+  .num{ font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+
+  /* ---------- tally-mark specimens ---------- */
+  .marks{ display: flex; flex-wrap: wrap; gap: var(--sp-4) var(--sp-5); align-items: flex-end; }
+  .mark-cell{ display: flex; flex-direction: column; gap: 6px; align-items: center; color: var(--accent); filter: drop-shadow(0 0 4px var(--accent-glow)); }
+  .mark-cell .n{ font-size: 10px; color: var(--ink-faint); }
+
+  /* ---------- local-first app ---------- */
+  main#view{ display: block; }
+
+  /* The notch list is one bordered container of hairline-separated rows —
+     GitHub's issue-list shape — not a stack of individually glowing cards. The
+     same container wraps sub-notches on the detail view. */
+  .notch-list{ border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; background: var(--bg-raised); }
+  a.notch-card{ display: block; text-decoration: none; color: var(--ink); padding: 13px 14px; border-top: 1px solid var(--line); transition: background .12s ease; }
+  a.notch-card:first-child{ border-top: 0; }
+  a.notch-card:hover{ background: color-mix(in srgb, var(--accent) 5%, var(--bg-raised)); }
+  a.notch-card:focus-visible{ outline: 2px solid var(--accent); outline-offset: -2px; }
+  a.notch-card .title{ font-family: var(--font-display); font-weight: 600; font-size: 16.5px; line-height: 1.25; }
+  a.notch-card .untitled{ color: var(--ink-faint); font-style: italic; }
+  .notch-card .meta{ display: flex; flex-wrap: wrap; gap: 5px 12px; align-items: baseline; margin-top: 8px; color: var(--ink-faint); font-size: 12px; }
+
+  /* Open / Closed status filter — a quiet tab row above the list. */
+  .filter{ display: flex; align-items: center; gap: 18px; padding: 2px 2px 10px; border-bottom: 1px solid var(--line); }
+  .filter button{ display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; cursor: pointer; padding: 0; color: var(--ink-dim); font: 600 13.5px var(--font-body); letter-spacing: .01em; }
+  .filter button[aria-pressed="true"]{ color: var(--ink); }
+  .filter button[aria-pressed="true"] .fdot{ background: var(--good); }
+  .filter button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+  .filter .fdot{ width: 9px; height: 9px; border-radius: 50%; background: var(--ink-faint); flex-shrink: 0; }
+  .filter .n{ font-variant-numeric: tabular-nums; }
+
+  /* Checklist progress — a slim bar + count in the section header. */
+  .progress{ display: flex; align-items: center; gap: 10px; }
+  .progress .bar{ flex: 1 1 auto; height: 6px; border-radius: 999px; background: var(--bg-raised-2); overflow: hidden; }
+  .progress .bar > i{ display: block; height: 100%; background: var(--good); border-radius: 999px; }
+  .progress .pct{ font-size: 11.5px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+
+  /* checklist item = a checkbox row with an inline remove button */
+  .check{ position: relative; }
+  .check .lbl{ flex: 1 1 auto; }
+  .check .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .55; font-size: 15px; line-height: 1; padding: 0 2px; }
+  .check .x:hover{ opacity: 1; color: var(--danger); }
+
+  /* a count/aside on the right of a section header (e.g. "3 of 7") */
+  .section > h2 .count{ color: var(--ink); font-weight: 600; }
+
+  /* ---------- notch detail: title + description ----------
+     The detail view edits a notch the way GitHub edits an issue: a prominent
+     title, a Markdown description with a Write/Preview toggle, and a comment
+     thread. */
+  .title-input{ font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+
+  /* The Write/Preview toggle reuses the segmented control; give it room to sit
+     left-aligned above the editor. */
+  #body-tabs{ align-self: flex-start; }
+
+  /* The raw-Markdown editor is roomier than a plain note field. */
+  .md-input{ min-height: 160px; font-family: var(--font-mono); font-size: 13px; line-height: 1.5; }
+
+  /* ---------- rendered Markdown ----------
+     One shared surface for a rendered description and every rendered comment.
+     Spacing is tuned so stacked blocks breathe without the first/last one
+     adding stray padding inside its container. */
+  .md-body{ color: var(--ink); font-size: 13.5px; line-height: 1.6; word-wrap: break-word; overflow-wrap: anywhere; }
+  .md-body.empty{ font-size: 13px; }
+  .md-body > :first-child{ margin-top: 0; }
+  .md-body > :last-child{ margin-bottom: 0; }
+  .md-body p{ margin: 0 0 var(--sp-3); }
+  .md-body .md-h{ font-family: var(--font-display); font-weight: 700; line-height: 1.3; margin: var(--sp-4) 0 var(--sp-2); }
+  .md-body .md-h1{ font-size: 20px; }
+  .md-body .md-h2{ font-size: 18px; }
+  .md-body .md-h3{ font-size: 16px; }
+  .md-body .md-h4, .md-body .md-h5, .md-body .md-h6{ font-size: 14px; color: var(--ink-dim); }
+  .md-body .md-list{ margin: 0 0 var(--sp-3); padding-left: 1.4em; display: flex; flex-direction: column; gap: 4px; }
+  .md-body .md-list.md-ol{ list-style: decimal; }
+  .md-body .md-list li{ line-height: 1.55; }
+  /* Task-list items drop the bullet and hug the checkbox component. */
+  .md-body li.md-task{ list-style: none; margin-left: -1.4em; }
+  .md-body .md-check{ align-items: flex-start; gap: 9px; }
+  .md-body .md-check .box{ width: 18px; height: 18px; margin-top: 1px; }
+  .md-body .md-check .lbl{ line-height: 1.5; }
+  .md-body code{
+    font-family: var(--font-mono); font-size: .88em;
+    background: var(--bg-raised-2); border: 1px solid var(--line);
+    border-radius: var(--r-sm); padding: 1px 5px;
+  }
+  .md-body pre.md-code{
+    margin: 0 0 var(--sp-3); padding: var(--sp-3); overflow-x: auto;
+    background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--r);
+  }
+  .md-body pre.md-code code{ background: none; border: 0; padding: 0; font-size: 12.5px; line-height: 1.5; }
+  .md-body blockquote.md-quote{
+    margin: 0 0 var(--sp-3); padding: 4px 0 4px var(--sp-3);
+    border-left: 3px solid var(--line-strong); color: var(--ink-dim);
+  }
+  .md-body hr.md-hr{ border: 0; border-top: 1px solid var(--line-strong); margin: var(--sp-4) 0; }
+  .md-body a{ color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+
+  /* ---------- activity timeline: the paper trail ----------
+     The detail view's Activity section is one append-only event log, GitHub-issue
+     style. A single rail runs its length; small events (a label added, a task
+     ticked, a status change) hang off it as one-liners, while comments and the
+     opening description are full cards. A deleted comment doesn't vanish — it
+     stays as a struck-through tombstone. Nothing here is destructive. */
+
+  /* status pill in the section header + timeline */
+  .state{ display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; color: #fff; }
+  .state svg{ width: 13px; height: 13px; }
+  .state.done{ background: var(--good); }
+  .state.open{ background: var(--accent); }
+  .state.np{ background: var(--ink-dim); }
+
+  /* ---------- detail header: state · parent · actions ----------
+     The notch section header now carries the live state pill, the parent notch
+     (when there is one) as a compact status-bearing link, and a kebab menu that
+     owns every status change. The row wraps on a narrow screen. */
+  .head-actions{ flex-wrap: wrap; justify-content: flex-end; }
+
+  .parent-chip{
+    display: inline-flex; align-items: center; gap: 6px; max-width: 15rem;
+    padding: 3px 10px 3px 6px; border-radius: 999px;
+    border: 1px solid var(--line-strong); background: var(--bg-raised);
+    color: var(--ink); text-decoration: none; font-size: 12px; font-weight: 600;
+    transition: border-color .12s ease, background .12s ease;
+  }
+  .parent-chip:hover{ border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg-raised)); }
+  .parent-chip:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  .parent-chip .pttl{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .parent-chip .pdot{
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; color: #fff;
+  }
+  .parent-chip .pdot svg{ width: 12px; height: 12px; }
+  .parent-chip .pdot.open{ background: var(--accent); }
+  .parent-chip .pdot.done{ background: var(--good); }
+  .parent-chip .pdot.np{ background: var(--ink-dim); }
+
+  /* ---------- popover menus (status / labels / add sub-notch) ----------
+     A shared kebab-triggered popover. Only one is open at a time; an outside
+     click closes it (wired in app.js). The pop is absolutely placed under its
+     trigger and never pushes layout. */
+  .menu{ position: relative; display: inline-flex; }
+  .menu-btn{
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; padding: 0; border-radius: var(--r-sm);
+    border: 1px solid var(--line-strong); background: var(--bg-raised);
+    color: var(--ink-dim); cursor: pointer; transition: border-color .12s ease, color .12s ease;
+  }
+  .menu-btn:hover{ border-color: var(--accent); color: var(--ink); }
+  .menu-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  .menu-btn.sm{ width: 28px; height: 28px; }
+  .menu-btn svg{ width: 17px; height: 17px; }
+  .menu.open .menu-btn{ border-color: var(--accent); color: var(--ink); }
+  /* the "+ Add" trigger keeps its .btn styling; just give the glyph room */
+  .add-sub svg{ width: 14px; height: 14px; }
+
+  .menu-pop{
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 40;
+    min-width: 216px; max-width: min(84vw, 300px);
+    padding: 8px; border: 1px solid var(--line-strong); border-radius: var(--r);
+    background: var(--bg-raised); box-shadow: 0 12px 30px -12px rgba(0,0,0,.55);
+    display: none;
+  }
+  .menu-pop.right{ left: auto; right: 0; }
+  .menu.open .menu-pop{ display: block; animation: bootIn .14s both ease-out; }
+  .menu-title{ font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); padding: 2px 6px 6px; }
+  .menu-sep{ height: 1px; background: var(--line); margin: 8px 0; }
+
+  .menu-item{
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    padding: 8px 8px; border: 0; border-radius: var(--r-sm); background: transparent;
+    color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .menu-item:hover{ background: color-mix(in srgb, var(--accent) 9%, var(--bg-raised)); }
+  .menu-item:focus-visible{ outline: 2px solid var(--accent); outline-offset: -2px; }
+  .menu-item svg{ width: 16px; height: 16px; flex-shrink: 0; color: var(--ink-dim); }
+  .menu-item.good svg{ color: var(--good); }
+
+  /* label popover: existing labels are remove-buttons, plus an add field */
+  .menu-labels{ display: flex; flex-direction: column; gap: 6px; padding: 2px 4px 4px; }
+  .menu-label-row{ display: flex; align-items: center; gap: 6px; }
+  .menu-label{
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 2px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--bg-raised-2);
+    cursor: pointer; transition: border-color .12s ease; flex: 1 1 auto; min-width: 0;
+  }
+  .menu-label:hover{ border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
+  .menu-label .lab{ text-shadow: none; pointer-events: none; overflow: hidden; text-overflow: ellipsis; }
+  .menu-label .x{ color: var(--ink-dim); font-size: 14px; line-height: 1; padding: 0 2px; flex-shrink: 0; }
+  .menu-label:hover .x{ color: var(--danger); }
+  .menu-label:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* the two color pickers on a label row: background, then text color */
+  .lab-color{
+    width: 22px; height: 22px; padding: 0; border: 1px solid var(--line-strong);
+    border-radius: 6px; background: none; cursor: pointer; flex-shrink: 0;
+  }
+  .lab-color::-webkit-color-swatch-wrapper{ padding: 2px; }
+  .lab-color::-webkit-color-swatch{ border: none; border-radius: 4px; }
+  .lab-color::-moz-color-swatch{ border: none; border-radius: 4px; }
+  .lab-color:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* "All labels" — every label in the system not yet on this notch, click to
+     add. A row of unwrapped chip buttons rather than the remove-button rows
+     above, since these are add affordances, not managed entries. */
+  .menu-suggestions{ flex-direction: row; flex-wrap: wrap; max-height: 132px; overflow-y: auto; }
+  .menu-suggest{ border: 0; background: none; padding: 0; cursor: pointer; border-radius: 999px; }
+  .menu-suggest .lab{ pointer-events: none; }
+  .menu-suggest:hover .lab{ filter: brightness(1.1); }
+  .menu-suggest:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ---------- sub-notches roll-up (foot of the notch box) ----------
+     Sub-notches moved out of their own section into a collapsible roll-up under
+     the title, with an Add popover (create new / link existing). */
+  .labels-row{ display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+  .labels-chips{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 28px; padding-top: 2px; }
+
+  .subs{ border-top: 1px solid var(--line); padding-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-3); }
+  .subs-head{ display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+  .subs-toggle{
+    display: inline-flex; align-items: center; gap: 7px; padding: 4px 2px;
+    border: 0; background: none; cursor: pointer; color: var(--ink-dim);
+    font: 600 12.5px var(--font-body); letter-spacing: .01em;
+  }
+  .subs-toggle:hover{ color: var(--ink); }
+  .subs-toggle:focus-visible{ outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+  .subs-toggle .count{ color: var(--ink); }
+  .subs-toggle .caret{ display: inline-flex; color: var(--ink-faint); transition: transform .14s ease; }
+  .subs-toggle .caret svg{ width: 15px; height: 15px; }
+  .subs:not(.collapsed) .subs-toggle .caret{ transform: rotate(90deg); }
+  .subs.collapsed .subs-body{ display: none; }
+
+  /* Sub-notches render as condensed table lines (title · meta · updated) inside
+     the shared .notch-list frame, rather than full cardHTML cards — a roll-up
+     should read at a glance, not repeat the top-level list's layout. */
+  .subs-table{ width: 100%; border-collapse: collapse; }
+  .subs-table tr{ border-top: 1px solid var(--line); transition: background .12s ease; }
+  .subs-table tr:first-child{ border-top: 0; }
+  .subs-table tr:hover{ background: color-mix(in srgb, var(--accent) 5%, var(--bg-raised)); }
+  .subs-table td{ padding: 9px 14px; font-size: 13px; line-height: 1.4; vertical-align: middle; }
+  .subs-table td.subs-title{ font-family: var(--font-display); font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+  .subs-table td.subs-title a{ color: var(--ink); text-decoration: none; }
+  .subs-table td.subs-title a:hover{ text-decoration: underline; }
+  .subs-table td.subs-title .untitled{ color: var(--ink-faint); font-style: italic; }
+  .subs-table td.subs-title .subs-tags{ margin-left: 10px; }
+  .subs-table td.subs-meta,
+  .subs-table td.subs-updated{ color: var(--ink-faint); font-size: 12px; white-space: nowrap; width: 1%; }
+  .subs-table td.subs-updated{ text-align: right; }
+
+  .timeline{ position: relative; display: flex; flex-direction: column; gap: 2px; }
+  .timeline::before{ content: ""; position: absolute; left: 15px; top: 6px; bottom: 18px; width: 2px; background: var(--line-strong); }
+
+  .ev{ position: relative; padding-left: 44px; }
+  .ev .icon{
+    position: absolute; left: 2px; top: 0; width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-raised-2); border: 1px solid var(--line-strong); color: var(--ink-dim);
+  }
+  .ev .icon svg{ width: 15px; height: 15px; }
+  .ev.accent .icon{ background: var(--accent-tint); border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); color: var(--accent-strong); }
+  .ev.good .icon{ background: color-mix(in srgb, var(--good) 15%, var(--bg-raised)); border-color: color-mix(in srgb, var(--good) 45%, var(--line)); color: var(--good); }
+  .ev.danger .icon{ background: color-mix(in srgb, var(--danger) 12%, var(--bg-raised)); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); color: var(--danger); }
+
+  /* one-line event */
+  .ev.small{ padding-top: 5px; padding-bottom: 5px; min-height: 34px; display: flex; align-items: center; }
+  .ev.small .line{ font-size: 12.5px; color: var(--ink-dim); line-height: 1.4; }
+  .ev.small .line b{ color: var(--ink); font-weight: 600; }
+  .ev .when{ color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .ev.small .when::before{ content: "·"; margin: 0 6px; color: var(--ink-faint); }
+  .ev-link{ color: var(--accent-strong); text-decoration: none; }
+  .ev-link:hover{ text-decoration: underline; }
+
+  /* card event (comment / opening description) */
+  .ev.card{ padding-top: var(--sp-2); padding-bottom: var(--sp-2); }
+  .ev .box{ border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg-raised); overflow: hidden; }
+  .ev.accent .box{ border-color: color-mix(in srgb, var(--accent) 30%, var(--line-strong)); }
+  .ev .box-head{
+    display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+    padding: 8px 12px; background: var(--bg-raised-2); border-bottom: 1px solid var(--line);
+    font-size: 12px; color: var(--ink-dim);
+  }
+  .ev .box-head b{ color: var(--ink); font-weight: 600; }
+  .ev .box-body{ padding: var(--sp-3) 12px; }
+  .ev .box-body.stack{ gap: var(--sp-3); }
+  .ev .box-head .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .55; font-size: 15px; line-height: 1; padding: 0 2px; }
+  .ev .box-head .x:hover{ opacity: 1; color: var(--danger); }
+
+  /* a deleted comment: kept in the log, dimmed, struck, dashed */
+  .ev.deleted .box{ background: var(--bg); border-style: dashed; }
+  .ev.deleted .box-head{ background: transparent; }
+  .ev.deleted .box-body{ color: var(--ink-faint); }
+  .ev.deleted .box-body :is(p, li, h1, h2, h3, h4){ text-decoration: line-through; text-decoration-color: var(--line-strong); }
+  .tombstone{ font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--danger); }
+
+  /* the composer, pinned at the tail of the log on the same rail */
+  .composer{ position: relative; padding-left: 44px; margin-top: var(--sp-2); }
+  .composer .icon{
+    position: absolute; left: 2px; top: 0; width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent); border: 1px solid var(--accent); color: var(--accent-ink);
+  }
+  .composer .icon svg{ width: 15px; height: 15px; }
+  .composer-box{ border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg-raised); overflow: hidden; }
+  .composer textarea{ width: 100%; border: 0; background: transparent; color: var(--ink); resize: vertical; min-height: 84px; padding: var(--sp-3) 12px; font: inherit; outline: none; }
+  .composer textarea::placeholder{ color: var(--ink-faint); }
+  .composer textarea:focus-visible{ outline: 2px solid var(--accent); outline-offset: -2px; }
+  .composer-foot{ display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: 8px 10px; border-top: 1px solid var(--line); background: var(--bg-raised-2); }
+  .composer-foot .swatch-note{ flex: 1 1 auto; }
+  .composer-actions{ display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .composer-actions .btn.ghost svg{ width: 15px; height: 15px; }
+
+  /* ---------- attachments ----------
+     Files attach as timeline events: images preview inline (click → lightbox),
+     everything else is a download chip. .visually-hidden hides the real <input
+     type=file> while keeping it operable; the Attach button proxies clicks to it. */
+  .visually-hidden{ position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+  .attach-body{ display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  .attach-figure{
+    display: block; padding: 0; line-height: 0; max-width: 100%; cursor: zoom-in;
+    border: 1px solid var(--line-strong); border-radius: var(--r-sm); overflow: hidden; background: var(--bg);
+  }
+  .attach-figure:hover{ border-color: var(--accent); }
+  .attach-figure:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  .attach-figure img{ display: block; max-width: 100%; max-height: 340px; width: auto; height: auto; object-fit: contain; }
+  .attach-meta{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; width: 100%; font-size: 12.5px; color: var(--ink-dim); }
+  .attach-name{ color: var(--ink); font-weight: 600; word-break: break-all; }
+  .attach-size{ color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .attach-dl{ display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--accent-strong); text-decoration: none; }
+  .attach-dl:hover{ text-decoration: underline; }
+  .attach-dl svg{ width: 14px; height: 14px; }
+
+  .attach-file{
+    display: flex; align-items: center; gap: 11px; width: 100%; padding: 10px 12px; text-decoration: none;
+    border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--ink);
+  }
+  .attach-file:hover{ border-color: var(--accent); }
+  .attach-file .attach-ico{ display: flex; flex: 0 0 auto; color: var(--accent-strong); }
+  .attach-file .attach-ico svg{ width: 22px; height: 22px; }
+  .attach-file-txt{ display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+  .attach-file > svg{ width: 16px; height: 16px; flex: 0 0 auto; color: var(--ink-faint); }
+  .attach-file:hover > svg{ color: var(--accent-strong); }
+
+  /* the full-screen image viewer */
+  .lightbox{
+    position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+    padding: 24px; background: rgba(0,0,0,.72); cursor: zoom-out; animation: lb-in .12s ease-out;
+  }
+  @supports (backdrop-filter: blur(2px)){ .lightbox{ backdrop-filter: blur(2px); } }
+  .lightbox-fig{ margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%; max-height: 100%; }
+  .lightbox-fig img{ max-width: 100%; max-height: 82vh; border-radius: var(--r-sm); background: var(--bg-raised); box-shadow: 0 12px 44px -8px rgba(0,0,0,.6); }
+  .lightbox-fig figcaption{ color: #fff; font-size: 13px; opacity: .85; word-break: break-all; text-align: center; }
+  .lightbox-x{
+    position: absolute; top: 16px; right: 18px; width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.3); background: rgba(0,0,0,.4); color: #fff; font-size: 22px; line-height: 1;
+  }
+  .lightbox-x:hover{ background: rgba(0,0,0,.65); }
+  @keyframes lb-in{ from{ opacity: 0 } to{ opacity: 1 } }
+
+  .back{ text-decoration: none; }
+  .back:hover{ text-decoration: underline; }
+  .crumb-sep{ color: var(--ink-faint); opacity: .7; }
+
+  /* ---------- tallies (issue→PR sibling of notches) ----------
+     A tally is a reviewable proposal: a typed diff of data changes plus the
+     notches it closes on merge. It reuses the notch chrome wholesale (cards,
+     timeline, composer, menus) and adds only the pieces below: the top-level
+     nav, the merged "settled" hue, the diff, the linked-notches list, and the
+     merge/decline action bar. */
+
+  /* top-level view switch (Notches / Tallies), a slim pill row under the ticker */
+  .viewnav{ display: flex; gap: 4px; margin: var(--sp-3) var(--sp-4) 0; }
+  .viewnav a{
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+    border-radius: 999px; text-decoration: none; color: var(--ink-dim);
+    font-size: 13px; font-weight: 600; letter-spacing: .01em;
+    border: 1px solid transparent; transition: background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .viewnav a:hover{ color: var(--ink); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .viewnav a[aria-current="page"]{ color: var(--ink); background: var(--bg-raised); border-color: var(--line-strong); }
+  .viewnav a:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* "merged" is a settled state — a theme-woven violet (pink×blue), distinct
+     from a notch's green "done". */
+  .state.merged{ background: color-mix(in srgb, var(--lab-pink) 58%, var(--lab-blue)); }
+  .lab.merged{ --lc: color-mix(in srgb, var(--lab-pink) 58%, var(--lab-blue)); }
+  .ev.merged .icon{
+    background: color-mix(in srgb, var(--lab-pink) 15%, var(--bg-raised));
+    border-color: color-mix(in srgb, var(--lab-pink) 45%, var(--line));
+    color: color-mix(in srgb, var(--lab-pink) 60%, var(--lab-blue));
+  }
+  .parent-chip .pdot.merged{ background: color-mix(in srgb, var(--lab-pink) 58%, var(--lab-blue)); }
+  .parent-chip .pdot.declined{ background: var(--ink-dim); }
+  .card-by{ font-size: 12px; color: var(--ink-faint); }
+  .tally-title-static{ font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+  .tally-title-static .untitled{ color: var(--ink-faint); font-style: italic; }
+
+  /* applications — the actor model's face. App identity reuses the label palette
+     (appChip / kind-lab), so no new colour is introduced. */
+  .app-chip{ text-decoration: none; display: inline-flex; vertical-align: middle; }
+  .app-chip:hover .lab{ border-color: var(--line-strong); }
+  .app-chip:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 999px; }
+  .kind-lab{ text-transform: lowercase; }
+  .lab.scope{ font-weight: 500; }
+  .app-blurb{ color: var(--ink-dim); font-size: 14px; line-height: 1.5; margin: 0; }
+  .app-scopes{ display: flex; flex-direction: column; gap: 8px; }
+  .app-action{
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm);
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
+  }
+  .app-manage{ display: flex; align-items: center; gap: 12px; }
+
+  /* the diff — a tally's typed changes as +added lines */
+  .diff-block, .linked-block{ display: flex; flex-direction: column; gap: 8px; }
+  .diff-title{ font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); display: flex; align-items: center; gap: 8px; }
+  .diff-title .count{ color: var(--ink); }
+  .diff{ display: flex; flex-direction: column; gap: 8px; }
+  .diff-change{ border: 1px solid var(--line-strong); border-radius: var(--r-sm); overflow: hidden; background: var(--bg); }
+  .diff-change.applied{ opacity: .82; }
+  .diff-head{ display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; background: var(--bg-raised-2); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-dim); }
+  .diff-op{ font-weight: 600; color: var(--ink); }
+  .diff-applied{ font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--good); }
+  .diff-head .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .6; font-size: 14px; line-height: 1; padding: 0 2px; }
+  .diff-head .x:hover{ opacity: 1; color: var(--danger); }
+  .diff-lines{ padding: 6px 10px; background: color-mix(in srgb, var(--good) 6%, transparent); }
+  .diff-line{ display: flex; gap: 8px; padding: 2px 0; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5; color: var(--ink); word-break: break-word; }
+  .diff-mark{ color: var(--good); font-weight: 700; flex: 0 0 auto; }
+
+  /* the add-change form */
+  .change-form{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+  .change-form .select{ flex: 0 0 auto; width: auto; }
+  .change-form .input{ flex: 1 1 11rem; width: auto; }
+  .change-form .btn{ flex: 0 0 auto; }
+
+  /* linked notches (what the tally closes on merge) */
+  .linked-list{ display: flex; flex-direction: column; gap: 6px; }
+  .linked-row{ display: flex; align-items: center; gap: 8px; }
+  .linked-row .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .6; font-size: 15px; line-height: 1; padding: 0 2px; flex: 0 0 auto; }
+  .linked-row .x:hover{ opacity: 1; color: var(--danger); }
+
+  /* merge / decline action bar */
+  .tally-actions{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: var(--sp-3); }
+  .tally-actions-note{ flex: 1 1 100%; }
+  .btn.merge{ background: var(--good); color: #08150d; border-color: var(--good); box-shadow: 0 0 16px -8px color-mix(in srgb, var(--good) 60%, transparent); }
+  .btn.merge:hover{ filter: brightness(1.06); }
+  .btn.merge svg{ width: 16px; height: 16px; }
+  .tally-outcome{ display: inline-flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: var(--sp-3); font-size: 13px; font-weight: 600; color: var(--ink-dim); }
+  .tally-outcome svg{ width: 16px; height: 16px; }
+  .tally-outcome.merged{ color: color-mix(in srgb, var(--lab-pink) 60%, var(--lab-blue)); }
+  .tally-outcome .btn{ margin-left: 6px; }
+
+  /* ledger — the read-only face of the data substrate, grouped by dataset */
+  .ledger-list .ledger-row{ padding: 11px 14px; border-top: 1px solid var(--line); }
+  .ledger-list .ledger-row:first-child{ border-top: 0; }
+  .ledger-main{ color: var(--ink); font-size: 13.5px; line-height: 1.4; word-break: break-word; }
+  .ledger-meta{ margin-top: 4px; font-size: 12px; color: var(--ink-faint); }
+  .ledger-meta a{ color: var(--accent-strong); text-decoration: none; }
+  .ledger-meta a:hover{ text-decoration: underline; }
+  /* a binary (blob) ledger entry: an image thumbnail + meta, or a file chip */
+  .ledger-blob{ display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .ledger-blob .attach-figure img{ max-height: 96px; }
+  .ledger-blob-meta{ display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
+  .ledger-blob-meta .attach-dl{ margin-left: 0; margin-top: 2px; }
+  .ledger-row .attach-file{ margin: 0; }
+  /* a linked count in the status ticker (records → ledger) */
+  .ticker .stat-link{ color: inherit; text-decoration: none; }
+  .ticker .stat-link:hover{ color: var(--ink); }
+  .ticker .stat-link:hover b{ color: var(--accent-strong); }
+
+  /* on a notch: the tallies that link it */
+  .notch-tallies{ display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; padding-top: 2px; }
+  .nt-label{ display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-dim); min-height: 26px; }
+  .nt-label svg{ width: 14px; height: 14px; color: var(--ink-faint); }
+  .nt-chips{ display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* ---------- mobile ----------
+     The layout is a single narrow column already, so the phone pass is mostly
+     making the header breathe and keeping every control reachable. Nothing here
+     relies on horizontal scrolling — rows wrap. */
+  @media (max-width: 480px){
+    main{ padding: 0 var(--sp-3); }
+    .ticker{ margin-left: var(--sp-3); margin-right: var(--sp-3); }
+    /* Each stat gets its own line instead of wrapping mid-phrase across two. */
+    .stats-body{ flex-direction: column; align-items: flex-start; gap: 6px; }
+    .stats-body .stat + .stat::before{ content: none; margin-right: 0; }
+    .viewnav{ margin-left: var(--sp-3); margin-right: var(--sp-3); }
+    .topbar{ padding: var(--sp-3) var(--sp-3) var(--sp-3); gap: var(--sp-2); }
+    .brand{ font-size: 20px; }
+    /* Give the tap targets a comfortable minimum on touch. */
+    .btn{ min-height: 40px; }
+    .btn.sm{ min-height: 34px; }
+    .filter button{ min-height: 34px; }
+    /* Full-width primary actions read better than a cramped inline button. */
+    .section-body form.row .btn{ flex: 1 1 auto; }
+  }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
