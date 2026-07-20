@@ -355,6 +355,17 @@
     if (ev) ev.deleted = true;
     await persist(n);
   }
+  // addLabelToNotch is the one path a label lands on a notch — typed fresh into
+  // the add field, or clicked from the "All labels" list. Either way it goes
+  // through ensureLabel so an existing name reuses its global color, and is a
+  // no-op if the notch already carries it.
+  async function addLabelToNotch(n, name) {
+    if (n.tags.some((t) => t.toLowerCase() === name.toLowerCase())) return;
+    const label = ensureLabel(name);
+    n.tags.push(label.name);
+    logEvent(n, 'labeled', { name: label.name });
+    await persist(n);
+  }
 
   // ---------- helpers ----------
   const view = () => document.getElementById('view');
@@ -669,11 +680,7 @@
   function applyOpenMenu() {
     if (!detailMenu) return;
     const m = document.querySelector(`.menu[data-menu="${detailMenu}"]`);
-    if (m) {
-      m.classList.add('open');
-      const t = m.querySelector('[data-menu-trigger]');
-      if (t) t.setAttribute('aria-expanded', 'true');
-    }
+    if (m) openMenuEl(m);
     detailMenu = null;
   }
 
@@ -907,6 +914,16 @@
             '</div>';
         }).join('')
       : '<span class="swatch-note">No labels yet.</span>';
+    // Every other label already in the system — click one to add it to this
+    // notch instead of retyping its name (and hoping the spelling, and thus
+    // the color, matches). Only labels not already on this notch show up here.
+    const onNotch = new Set(n.tags.map((t) => t.toLowerCase()));
+    const others = labels.filter((l) => !onNotch.has(l.name.toLowerCase()));
+    const suggestions = others.length
+      ? '<div class="menu-sep"></div><div class="menu-title">All labels</div>' +
+        `<div class="menu-labels menu-suggestions">${others.map((l) =>
+          `<button class="menu-suggest" type="button" data-add-tag="${esc(l.name)}">${labChip(l.name)}</button>`).join('')}</div>`
+      : '';
     return '<div class="labels-row">' +
       `<div class="labels-chips">${chips || '<span class="swatch-note">No labels</span>'}</div>` +
       '<div class="menu" data-menu="labels">' +
@@ -915,7 +932,7 @@
       `<div class="menu-labels">${popChips}</div>` +
       '<form class="row" id="tag-form" autocomplete="off" style="margin-top:8px">' +
       '<input class="input" id="tag-name" type="text" placeholder="add a label…" style="flex:1 1 6rem" maxlength="24"/>' +
-      '<button class="btn ghost sm" type="submit">Add</button></form></div></div></div>';
+      `<button class="btn ghost sm" type="submit">Add</button></form>${suggestions}</div></div></div>`;
   }
 
   // A sub-notch row condenses cardHTML's title/tags/meta into one table line —
@@ -1108,15 +1125,8 @@
       const box = document.getElementById('tag-name');
       const name = box.value.trim();
       if (!name) return;
-      if (!n.tags.some((t) => t.toLowerCase() === name.toLowerCase())) {
-        const label = ensureLabel(name); // reuses the global label's color if it already exists
-        n.tags.push(label.name);
-        logEvent(n, 'labeled', { name: label.name });
-        detailMenu = 'labels'; // keep the labels popover open for the next add
-        persist(n).then(() => renderDetail(n));
-      } else {
-        box.value = '';
-      }
+      detailMenu = 'labels'; // keep the labels popover open for the next add
+      addLabelToNotch(n, name).then(() => renderDetail(n));
       return;
     }
   }
@@ -1124,28 +1134,40 @@
   // Toggle a detail popover (status / labels / add-sub). Opening one closes any
   // other, so only a single menu is ever open; the document-level onDocClick
   // closes them on an outside click.
+  // Each .section is its own stacking context (the boot-in animation forces
+  // one), so a popover's z-index only wins fights within its own section —
+  // a popover tall enough to spill into the next section down (the labels
+  // popover's "All labels" list, once there are enough labels) would
+  // otherwise sit *behind* that next section's content for clicks and
+  // paint. Elevating the open popover's host section above its siblings
+  // while it's open fixes both.
+  function closeMenuEl(m) {
+    m.classList.remove('open');
+    const t = m.querySelector('[data-menu-trigger]');
+    if (t) t.setAttribute('aria-expanded', 'false');
+    const section = m.closest('.section');
+    if (section) section.classList.remove('pop-elevated');
+  }
+  function openMenuEl(m) {
+    m.classList.add('open');
+    const t = m.querySelector('[data-menu-trigger]');
+    if (t) t.setAttribute('aria-expanded', 'true');
+    const section = m.closest('.section');
+    if (section) section.classList.add('pop-elevated');
+  }
+
   function toggleMenu(trigger) {
     const menu = trigger.closest('.menu');
     if (!menu) return;
     const willOpen = !menu.classList.contains('open');
-    document.querySelectorAll('.menu.open').forEach((m) => {
-      m.classList.remove('open');
-      const t = m.querySelector('[data-menu-trigger]');
-      if (t) t.setAttribute('aria-expanded', 'false');
-    });
-    if (willOpen) menu.classList.add('open');
-    trigger.setAttribute('aria-expanded', String(willOpen));
+    document.querySelectorAll('.menu.open').forEach(closeMenuEl);
+    if (willOpen) openMenuEl(menu);
   }
 
   function onDocClick(e) {
     const open = document.querySelectorAll('.menu.open');
     if (!open.length) return;
-    open.forEach((m) => {
-      if (m.contains(e.target)) return;
-      m.classList.remove('open');
-      const t = m.querySelector('[data-menu-trigger]');
-      if (t) t.setAttribute('aria-expanded', 'false');
-    });
+    open.forEach((m) => { if (!m.contains(e.target)) closeMenuEl(m); });
   }
 
   function onClick(e) {
@@ -1228,6 +1250,16 @@
       logEvent(n, 'unlabeled', { name });
       detailMenu = 'labels'; // keep the labels popover open after removing one
       persist(n).then(() => renderDetail(n));
+      return;
+    }
+    // Clicking a chip in the "All labels" list adds that existing label to
+    // this notch — the click-to-add counterpart of typing its name.
+    const addTag = e.target.closest('[data-add-tag]');
+    if (addTag) {
+      e.preventDefault();
+      const n = currentDetail(); if (!n) return;
+      detailMenu = 'labels'; // keep the labels popover open
+      addLabelToNotch(n, addTag.getAttribute('data-add-tag')).then(() => renderDetail(n));
       return;
     }
     // Status changes live in the header kebab now: one handler for all three.
