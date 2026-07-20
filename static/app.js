@@ -26,6 +26,19 @@
 // not the provider, decides what enters the system. See the state/CRUD/merge
 // block below (createTally … mergeTally) and the "tally views" render block.
 //
+// APPLICATIONS: an application is a registered non-human actor (a provider, a
+// local helper, or the built-in `you`). Its ONE write verb is "author a tally",
+// so everything it does still passes the merge gate — writes are always
+// proposals, never silent. Reading is the new permission surface: an app holds
+// typed scopes (read/propose over notches/records) and can only act within them;
+// withholding `records:propose` is exactly "can't touch the substrate". Tallies
+// and records reference their author by `appId` for provenance. The Apps view
+// lists every actor, what it may do, and everything it has proposed — and lets
+// you revoke it. In demo the apps are pre-registered with a live action so the
+// whole app→proposal→merge loop runs with no backend; a real ingest endpoint
+// (the dormant internal/source registry) is the later transport. See the
+// "applications" state/logic block (demoApps … runAppAction) and its render block.
+//
 // Data model (`notches`, an in-memory array keyed by id):
 //   Notch { id, title, body, tags:[name],
 //           events:[Event],
@@ -100,6 +113,19 @@
   //   Record { id, dataset, summary, source, at, talliedFrom }
   let tallies = []; // proposals — parallel to `notches`
   let records = []; // the applied data substrate (SQLite/IndexedDB stand-in)
+  // APPLICATIONS: an application is a registered non-human actor. It has one
+  // write verb — *author a tally* — so everything it proposes still passes the
+  // merge gate (the user, not the app, decides what lands). Reading is the new
+  // permission surface: an app declares typed scopes and only sees/acts within
+  // them. `you` is the built-in actor (full scope, never revocable); connected
+  // apps stand in for external providers (music, scrape) and local apps derive
+  // from your own data. A tally references its author by `appId`; a record
+  // stamps the app that admitted it, so provenance survives.
+  //   App { id, name, kind:'you'|'connected'|'local', color, blurb,
+  //         scopes:[ 'notches:read' | 'notches:propose' | 'records:read'
+  //                  | 'records:propose' ],
+  //         action:{ label, verb }|null, status:'active'|'revoked', installedAt }
+  let apps = []; // the registered actors — see the APPLICATIONS note
   const now = () => Date.now();
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const byId = (id) => notches.find((n) => n.id === id);
@@ -277,6 +303,47 @@
     ];
   }
 
+  // demoApps seeds the registered actors. `you` is the built-in author of every
+  // tally you open by hand — full scope, never revocable. The rest are demo
+  // stand-ins for real integrations, each with a live `action` so you can watch
+  // the whole loop run before any backend exists: the app authors a tally, it
+  // lands as a pending proposal, and nothing enters your data until you merge.
+  // Scopes are the "refine what an app can do" seam — a connected provider gets
+  // records:propose (it may propose ledger rows); the local Roundup helper gets
+  // only notches:read + notches:propose, so it can never touch the substrate.
+  function demoApps() {
+    const t = now();
+    return [
+      {
+        id: 'you', name: 'You', kind: 'you', color: 'blue',
+        blurb: 'That’s you — the built-in author of every tally you open by hand. Full access; can’t be revoked.',
+        scopes: ['notches:read', 'notches:propose', 'records:read', 'records:propose'],
+        action: null, status: 'active', installedAt: t - 90000,
+      },
+      {
+        id: 'spotify-demo', name: 'Spotify (demo)', kind: 'connected', color: 'green',
+        blurb: 'A connected music provider. Simulate a sync and it proposes your recent plays as ledger records — accept what you want, decline the rest.',
+        scopes: ['records:propose'],
+        action: { label: 'Simulate a sync', verb: 'spotify-sync' },
+        status: 'active', installedAt: t - 60000,
+      },
+      {
+        id: 'webclip-demo', name: 'Web Clip (demo)', kind: 'connected', color: 'cyan',
+        blurb: 'A scraper. Clip a file and it proposes the bytes as a binary ledger record — same review gate, now for files.',
+        scopes: ['records:propose'],
+        action: { label: 'Clip a file', verb: 'webclip-clip' },
+        status: 'active', installedAt: t - 55000,
+      },
+      {
+        id: 'roundup-demo', name: 'Roundup (demo)', kind: 'local', color: 'amber',
+        blurb: 'A local helper that runs on your own data. It reads your open notches and proposes a summary notch. It has no ledger access — it can only ever propose notches.',
+        scopes: ['notches:read', 'notches:propose'],
+        action: { label: 'Propose a roundup', verb: 'roundup' },
+        status: 'active', installedAt: t - 50000,
+      },
+    ];
+  }
+
   // demoTallies seeds the starting proposals: an open provider tally (third-party
   // data awaiting your accept/decline), an open user tally that only closes a
   // linked notch (a PR that "closes #12"), and one already merged so the list
@@ -286,7 +353,7 @@
     const t = now();
     return [
       {
-        id: 't_demo_import', title: 'Import 3 recent Spotify plays', author: 'Spotify',
+        id: 't_demo_import', title: 'Import 3 recent Spotify plays', appId: 'spotify-demo',
         status: 'open',
         body: [
           'A **connected provider** is proposing data.',
@@ -299,23 +366,23 @@
           { summary: 'Bonobo — Kerala' },
         ] }],
         linkedNotches: [],
-        events: [{ id: uid('e_'), kind: 'opened', at: t - 6000, author: 'Spotify' }],
+        events: [{ id: uid('e_'), kind: 'opened', at: t - 6000, author: 'Spotify (demo)' }],
         createdAt: t - 6000, updatedAt: t - 6000, mergedAt: null,
       },
       {
-        id: 't_demo_wrap', title: 'Wrap up the shopping list', author: 'you',
+        id: 't_demo_wrap', title: 'Wrap up the shopping list', appId: 'you',
         status: 'open',
         body: 'Like a PR that says *closes #12*, merging this tally closes the notch linked below — automatically, with an audit line added to that notch pointing back here.',
         changes: [],
         linkedNotches: ['n_demo_list'],
         events: [
-          { id: uid('e_'), kind: 'opened', at: t - 4000, author: 'you' },
+          { id: uid('e_'), kind: 'opened', at: t - 4000, author: 'You' },
           { id: uid('e_'), kind: 'linked', at: t - 3500, notchId: 'n_demo_list', title: 'A quick checklist' },
         ],
         createdAt: t - 4000, updatedAt: t - 3500, mergedAt: null,
       },
       {
-        id: 't_demo_done', title: 'Seed the pantry inventory', author: 'you',
+        id: 't_demo_done', title: 'Seed the pantry inventory', appId: 'you',
         status: 'merged',
         body: 'An example of a tally already merged — its rows have been written to the substrate.',
         changes: [{ op: 'add-records', dataset: 'pantry.items', rows: [
@@ -323,13 +390,13 @@
         ], applied: true }],
         linkedNotches: [],
         events: [
-          { id: uid('e_'), kind: 'opened', at: t - 9000, author: 'you' },
+          { id: uid('e_'), kind: 'opened', at: t - 9000, author: 'You' },
           { id: uid('e_'), kind: 'merged', at: t - 8000, changes: 1, closed: 0 },
         ],
         createdAt: t - 9000, updatedAt: t - 8000, mergedAt: t - 8000,
       },
       {
-        id: 't_demo_scrape', title: 'Clip 2 files from a web scrape', author: 'Web clip',
+        id: 't_demo_scrape', title: 'Clip 2 files from a web scrape', appId: 'webclip-demo',
         status: 'open',
         body: 'A scraper proposing **binary** data — an image and a note. Merge to write them into the ledger as blobs (viewable there); decline to drop them. Same review gate, now for files.',
         changes: [{ op: 'add-blob', dataset: 'webclip.files', blobs: [
@@ -337,7 +404,7 @@
           { name: 'notes.txt', mime: 'text/plain', size: 132, dataUrl: DEMO_NOTE },
         ] }],
         linkedNotches: [],
-        events: [{ id: uid('e_'), kind: 'opened', at: t - 5000, author: 'Web clip' }],
+        events: [{ id: uid('e_'), kind: 'opened', at: t - 5000, author: 'Web Clip (demo)' }],
         createdAt: t - 5000, updatedAt: t - 5000, mergedAt: null,
       },
     ];
@@ -346,13 +413,14 @@
   function demoRecords() {
     const t = now();
     return [
-      { id: uid('r_'), dataset: 'pantry.items', kind: 'text', summary: 'Olive oil ×1', source: 'you', at: t - 8000, talliedFrom: 't_demo_done' },
-      { id: uid('r_'), dataset: 'pantry.items', kind: 'text', summary: 'Basmati rice ×2', source: 'you', at: t - 8000, talliedFrom: 't_demo_done' },
+      { id: uid('r_'), dataset: 'pantry.items', kind: 'text', summary: 'Olive oil ×1', source: 'You', appId: 'you', at: t - 8000, talliedFrom: 't_demo_done' },
+      { id: uid('r_'), dataset: 'pantry.items', kind: 'text', summary: 'Basmati rice ×2', source: 'You', appId: 'you', at: t - 8000, talliedFrom: 't_demo_done' },
     ];
   }
 
   function load() {
     labels = demoLabels();
+    apps = demoApps();
     notches = demoSeed();
     tallies = demoTallies();
     records = demoRecords();
@@ -487,9 +555,9 @@
   function createTally(title) {
     const t = now();
     const tally = {
-      id: uid('t_'), title: (title || '').trim(), body: '', author: 'you',
+      id: uid('t_'), title: (title || '').trim(), body: '', appId: 'you',
       status: 'open', changes: [], linkedNotches: [],
-      events: [{ id: uid('e_'), kind: 'opened', at: t, author: 'you' }],
+      events: [{ id: uid('e_'), kind: 'opened', at: t, author: 'You' }],
       createdAt: t, updatedAt: t, mergedAt: null,
     };
     tallies.push(tally);
@@ -573,8 +641,9 @@
       ch.appliedNotchId = n.id;
     } else if (ch.op === 'add-records') {
       const at = now();
+      const src = tallyAuthorName(t);
       for (const row of ch.rows || []) {
-        records.push({ id: uid('r_'), dataset: ch.dataset, kind: 'text', summary: row.summary, source: t.author, at, talliedFrom: t.id });
+        records.push({ id: uid('r_'), dataset: ch.dataset, kind: 'text', summary: row.summary, source: src, appId: t.appId, at, talliedFrom: t.id });
       }
     } else if (ch.op === 'add-blob') {
       // Binary lands as a blob record. In demo the bytes ride along as a data:
@@ -583,11 +652,12 @@
       // that seam. The record still carries name/mime/size so the ledger can
       // preview or offer it for download without touching the bytes.
       const at = now();
+      const src = tallyAuthorName(t);
       for (const blob of ch.blobs || []) {
         records.push({
           id: uid('r_'), dataset: ch.dataset, kind: 'blob',
           name: blob.name, mime: blob.mime, size: blob.size, blobUrl: blob.dataUrl,
-          source: t.author, at, talliedFrom: t.id,
+          source: src, appId: t.appId, at, talliedFrom: t.id,
         });
       }
     }
@@ -634,6 +704,124 @@
     t.status = 'open';
     logEvent(t, 'reopened', {});
     await persistTally(t);
+  }
+
+  // ---------- applications ----------
+  // An app is the author of tallies. Its only write verb is "propose a tally",
+  // so the merge gate still stands between anything it does and your data.
+  const appById = (id) => apps.find((a) => a.id === id);
+  // The app that authored a tally, resolved from its appId. Falls back to a
+  // synthetic actor so a tally with an unknown/legacy author never renders blank.
+  function tallyApp(t) {
+    return appById(t.appId) || { id: t.appId || 'you', name: t.appId || 'you', kind: 'you', color: 'gray', scopes: [], status: 'active' };
+  }
+  const tallyAuthorName = (t) => tallyApp(t).name;
+  // A tally is user-authored (freely editable) only when its author is `you`.
+  const isYouTally = (t) => (t.appId || 'you') === 'you';
+
+  // Human labels for the typed scopes. A scope is `resource:verb`; there is no
+  // "write" verb — writes are always proposals — so the strongest thing an app
+  // can hold is `propose`. Withholding `records:propose` is exactly "can't touch
+  // the substrate": the app is limited to notch proposals.
+  const SCOPE_LABEL = {
+    'notches:read': 'read notches',
+    'notches:propose': 'propose notch changes',
+    'records:read': 'read the ledger',
+    'records:propose': 'propose ledger records',
+  };
+  // appCan gates every app action: the app must exist, be active (not revoked),
+  // and hold the scope. This is the one check the future permission UI refines.
+  const appCan = (app, scope) => !!(app && app.status === 'active' && (app.scopes || []).includes(scope));
+
+  // A compact identity chip for an app — a coloured dot + name that links to its
+  // page. Reuses the label palette so it stays theme-aware with zero new colour.
+  function appChip(app) {
+    if (!app) return '';
+    const cls = `lab ${esc(app.color || 'gray')}`;
+    return `<a class="app-chip" href="#/apps/${esc(app.id)}"><span class="${cls}">${esc(app.name)}</span></a>`;
+  }
+  const APP_KIND_LABEL = { you: 'you', connected: 'connected', local: 'local' };
+
+  // appOpenTally is the app-authored counterpart of createTally: an app proposes
+  // a batch of changes as a fresh open tally. Every change is scope-checked, so
+  // a revoked or under-privileged app simply can't open the tally — the same
+  // gate the eventual backend ingest endpoint will enforce server-side.
+  function appOpenTally(app, { title, body, changes }) {
+    const chs = changes || [];
+    for (const ch of chs) {
+      const scope = (ch.op === 'add-records' || ch.op === 'add-blob') ? 'records:propose' : 'notches:propose';
+      if (!appCan(app, scope)) return null;
+    }
+    const t0 = now();
+    const tally = {
+      id: uid('t_'), title: (title || '').trim(), body: body || '', appId: app.id,
+      status: 'open', changes: chs, linkedNotches: [],
+      events: [{ id: uid('e_'), kind: 'opened', at: t0, author: app.name }],
+      createdAt: t0, updatedAt: t0, mergedAt: null,
+    };
+    tallies.push(tally);
+    ticker();
+    return tally;
+  }
+
+  // A tiny pool the Spotify demo draws from — enough to make each simulated sync
+  // look freshly fetched without any network.
+  const SPOTIFY_POOL = [
+    'Radiohead — Weird Fishes', 'Khruangbin — Maria También', 'Bonobo — Kerala',
+    'Four Tet — Baby', 'Floating Points — Last Bloom', 'Caribou — Home',
+    'Jamie xx — Gosh', 'Aphex Twin — Rhubarb', 'Nils Frahm — Says',
+  ];
+  // Pick n distinct items from arr at random (Fisher–Yates prefix).
+  function sample(arr, n) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a.slice(0, Math.min(n, a.length));
+  }
+
+  // runAppAction is the demo's "does something" hook: the app's button fires
+  // here, it authors a real tally, and we drop the user straight onto it to
+  // review and merge — the full app→proposal→consent loop, no backend required.
+  // Guarded by appCan, so a revoked app's action is inert.
+  function runAppAction(app) {
+    if (!app || app.status !== 'active' || !app.action) return;
+    let t = null;
+    if (app.action.verb === 'spotify-sync') {
+      const rows = sample(SPOTIFY_POOL, 3).map((summary) => ({ summary }));
+      t = appOpenTally(app, {
+        title: 'Recent plays', body: 'A **connected provider** proposing data. Nothing lands until *you* merge it.',
+        changes: [{ op: 'add-records', dataset: 'spotify.plays', rows }],
+      });
+    } else if (app.action.verb === 'webclip-clip') {
+      t = appOpenTally(app, {
+        title: 'Clipped a file', body: 'A scraper proposing **binary** data. Merge to write it into the ledger; decline to drop it.',
+        changes: [{ op: 'add-blob', dataset: 'webclip.files', blobs: [
+          { name: 'clip.svg', mime: 'image/svg+xml', size: 512, dataUrl: DEMO_PHOTO },
+        ] }],
+      });
+    } else if (app.action.verb === 'roundup') {
+      const open = topLevel().filter((n) => notchStatus(n) === 'open');
+      const list = open.length
+        ? open.map((n) => `- [ ] ${n.title.trim() || 'untitled'}`).join('\n')
+        : '_No open notches right now — nothing to round up._';
+      const body = `A summary of your **${open.length}** open notch${open.length === 1 ? '' : 'es'}, read live from your data:\n\n${list}`;
+      t = appOpenTally(app, {
+        title: `Roundup — ${open.length} open notch${open.length === 1 ? '' : 'es'}`, body,
+        changes: [{ op: 'add-notch', title: `Roundup — ${fmtDate(now()).slice(0, 10)}`, body, tags: ['roundup'] }],
+      });
+    }
+    if (t) location.hash = '#/t/' + t.id;
+  }
+
+  // Revoking an app freezes its access: it can no longer author tallies (its
+  // action goes inert via appCan) while everything it already proposed stays put
+  // — revocation is forward-looking, never rewriting the record. `you` is not
+  // revocable. This is the coarse first cut of the per-app permission control.
+  function toggleAppRevoked(app) {
+    if (!app || app.id === 'you') return;
+    app.status = app.status === 'revoked' ? 'active' : 'revoked';
   }
 
   // ---------- helpers ----------
@@ -1503,8 +1691,9 @@
   function tallyOpeningCardHTML(t) {
     const opened = (t.events || []).find((e) => e.kind === 'opened');
     const when = fmtDate(opened ? opened.at : t.createdAt);
-    const actor = (opened && opened.author) || t.author || 'you';
-    const editable = tallyStatus(t) === 'open' && t.author === 'you';
+    const app = tallyApp(t);
+    const actorHTML = isYouTally(t) ? '<b>You</b>' : appChip(app);
+    const editable = tallyStatus(t) === 'open' && isYouTally(t);
     const tab = tallyBodyTabFor(t);
     const rendered = (t.body || '').trim()
       ? `<div class="md-body">${mdRender(t.body)}</div>`
@@ -1520,7 +1709,7 @@
     return '<div class="ev card accent opening">' +
       `<span class="icon">${ICON.merge}</span>` +
       '<div class="box"><div class="box-head">' +
-      `<span><b>${esc(actor)}</b> opened this tally</span><span class="when">${when}</span></div>` +
+      `<span>${actorHTML} opened this tally</span><span class="when">${when}</span></div>` +
       `<div class="box-body stack">${tabs}${bodyPane}</div></div></div>`;
   }
 
@@ -1552,7 +1741,7 @@
   function tallyCardHTML(t) {
     const bits = [`<span class="num">${t.changes.length}</span> change${t.changes.length === 1 ? '' : 's'}`];
     if (t.linkedNotches.length) bits.push(`<span class="num">${t.linkedNotches.length}</span> linked`);
-    const author = t.author && t.author !== 'you' ? `<span class="card-by">by ${esc(t.author)}</span>` : '';
+    const author = isYouTally(t) ? '' : `<span class="card-by">by ${esc(tallyAuthorName(t))}</span>`;
     return `
       <a class="notch-card" href="#/t/${esc(t.id)}">
         <div class="title">${t.title ? esc(t.title) : '<span class="untitled">untitled</span>'}</div>
@@ -1581,7 +1770,7 @@
     }
     if (!text) return true;
     const x = text.toLowerCase();
-    return t.title.toLowerCase().includes(x) || (t.body || '').toLowerCase().includes(x) || (t.author || '').toLowerCase().includes(x);
+    return t.title.toLowerCase().includes(x) || (t.body || '').toLowerCase().includes(x) || tallyAuthorName(t).toLowerCase().includes(x);
   }
 
   function renderTallyList() {
@@ -1640,7 +1829,7 @@
     tallyTitleBaseline = t.title || '';
     const events = (t.events || []).slice().sort((a, b) => a.at - b.at);
     const rest = events.filter((e) => e.kind !== 'opened').map((e) => tallyEventHTML(t, e)).join('');
-    const editable = tallyStatus(t) === 'open' && t.author === 'you';
+    const editable = tallyStatus(t) === 'open' && isYouTally(t);
     const titleField = editable
       ? `<label class="field"><span>Title</span><input class="input title-input" id="tally-title" type="text" value="${esc(t.title)}" placeholder="Title"/></label>`
       : `<h3 class="tally-title-static">${t.title ? esc(t.title) : '<span class="untitled">untitled</span>'}</h3>`;
@@ -1755,6 +1944,99 @@
     view().innerHTML = intro + sections;
   }
 
+  // ---------- applications view ----------
+  // The face of the actor model: every registered app, what it may read and
+  // propose, and everything it has proposed. An app's only power is to open
+  // tallies — which you still merge — so this page is where you see, and revoke,
+  // that power. In demo the apps come pre-registered with live actions; the
+  // "install an app" flow arrives with the backend that lets a real provider
+  // authenticate and push proposals.
+  const KIND_ORDER = { you: 0, connected: 1, local: 2 };
+  const appTallies = (app) => sortTallies(tallies.filter((t) => (t.appId || 'you') === app.id));
+  const sortedApps = () => [...apps].sort((a, b) =>
+    (KIND_ORDER[a.kind] - KIND_ORDER[b.kind]) || (a.installedAt - b.installedAt));
+
+  function scopeChip(scope) {
+    return `<span class="lab gray scope">${esc(SCOPE_LABEL[scope] || scope)}</span>`;
+  }
+  function appKindLab(app) {
+    return `<span class="lab ${esc(app.color || 'gray')} kind-lab">${esc(APP_KIND_LABEL[app.kind] || app.kind)}</span>`;
+  }
+
+  function appCardHTML(app) {
+    const ts = appTallies(app);
+    const open = ts.filter((t) => tallyStatus(t) === 'open').length;
+    const bits = [`<span class="num">${ts.length}</span> propos${ts.length === 1 ? 'al' : 'als'}`];
+    if (open) bits.push(`<span class="num">${open}</span> open`);
+    const revoked = app.status === 'revoked' ? '<span class="lab gray">revoked</span>' : '';
+    return `
+      <a class="notch-card" href="#/apps/${esc(app.id)}">
+        <div class="title">${esc(app.name)}</div>
+        <div class="row" style="margin-top:8px">${appKindLab(app)}${revoked}${(app.scopes || []).map(scopeChip).join('')}</div>
+        <div class="meta">${bits.join(' · ')}</div>
+      </a>`;
+  }
+
+  function renderApps() {
+    const intro = '<p class="lede">Applications — the registered actors that can author tallies. An app never writes to your data directly; it proposes, and you merge. Scopes decide what each app may read and propose; revoke one to freeze its access.</p>';
+    const list = sortedApps().map(appCardHTML).join('');
+    view().innerHTML = intro +
+      '<section class="section"><h2><span>Applications</span>' +
+      `<span class="count num">${apps.length}</span></h2>` +
+      `<div class="section-body"><div class="notch-list">${list}</div></div></section>`;
+  }
+
+  function renderAppDetail(app) {
+    const revocable = app.id !== 'you';
+    const revoked = app.status === 'revoked';
+    const noLedger = !(app.scopes || []).includes('records:propose');
+    const scopeNote = app.kind === 'you'
+      ? ''
+      : noLedger
+        ? '<span class="swatch-note">No ledger access — this app can only ever propose notch changes, never write records to the substrate.</span>'
+        : '<span class="swatch-note">This app may propose ledger records, but only through a tally you merge.</span>';
+    // The demo action, gated: shown live for an active app, disabled once revoked
+    // so the freeze is visible rather than silent.
+    const actionRow = app.action
+      ? '<div class="app-action">' +
+        (revoked
+          ? `<button class="btn primary sm" type="button" disabled>${esc(app.action.label)}</button><span class="swatch-note">Revoked — re-enable to run this app.</span>`
+          : `<button class="btn primary sm" type="button" data-app-action="${esc(app.id)}">${esc(app.action.label)}</button><span class="swatch-note">Runs the app — it authors a tally you then review and merge.</span>`) +
+        '</div>'
+      : '';
+    const revokeBtn = revocable
+      ? `<button class="btn ghost sm" type="button" data-app-revoke="${esc(app.id)}">${revoked ? 'Re-enable' : 'Revoke access'}</button>`
+      : '<span class="swatch-note">Built-in — always active.</span>';
+
+    const ts = appTallies(app);
+    const proposals = ts.length
+      ? `<div class="notch-list">${ts.map(tallyCardHTML).join('')}</div>`
+      : '<p class="swatch-note">This app hasn’t proposed anything yet.</p>';
+
+    view().innerHTML = `
+      <p class="lede">← <a href="#/apps" class="back">all applications</a></p>
+
+      <section class="section">
+        <h2><span>Application</span><span class="row head-actions" style="gap:8px">${appKindLab(app)}${revoked ? '<span class="lab gray">revoked</span>' : ''}</span></h2>
+        <div class="section-body stack">
+          <h3 class="tally-title-static">${esc(app.name)}</h3>
+          <p class="app-blurb">${esc(app.blurb || '')}</p>
+          <div class="app-scopes">
+            <div class="diff-title">Permissions</div>
+            <div class="row" style="flex-wrap:wrap; gap:6px">${(app.scopes || []).map(scopeChip).join('') || '<span class="swatch-note">No scopes.</span>'}</div>
+            ${scopeNote}
+          </div>
+          ${actionRow}
+          <div class="app-manage">${revokeBtn}</div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2><span>Proposals</span><span class="count num">${ts.length}</span></h2>
+        <div class="section-body">${proposals}</div>
+      </section>`;
+  }
+
   // ---------- lightbox ----------
   // A bare-bones full-screen image viewer for attachment previews: one overlay
   // appended to <body>, dismissed by clicking anywhere or pressing Escape. No
@@ -1791,6 +2073,14 @@
     }
     if (location.hash === '#/t' || location.hash === '#/t/') { renderTallyList(); setNav(); return; }
     if (location.hash === '#/ledger' || location.hash === '#/ledger/') { renderLedger(); setNav(); return; }
+    const ad = location.hash.match(/^#\/apps\/(.+)$/);
+    if (ad) {
+      const app = appById(ad[1]);
+      if (app) { renderAppDetail(app); setNav(); return; }
+      location.hash = '#/apps';
+      return;
+    }
+    if (location.hash === '#/apps' || location.hash === '#/apps/') { renderApps(); setNav(); return; }
     const m = location.hash.match(/^#\/n\/(.+)$/);
     if (m) {
       const n = byId(m[1]);
@@ -1805,6 +2095,7 @@
   // navSection maps the current hash to its top-level view — a notch/tally detail
   // counts as being in that section.
   function navSection() {
+    if (/^#\/apps(\/|$)/.test(location.hash)) return 'apps';
     if (/^#\/ledger(\/|$)/.test(location.hash)) return 'ledger';
     if (/^#\/t(\/|$)/.test(location.hash)) return 'tallies';
     return 'notches';
@@ -2000,6 +2291,24 @@
     if (fbtn) {
       e.preventDefault();
       setStatusFilter(fbtn.getAttribute('data-status'));
+      return;
+    }
+
+    // --- application interactions ---
+    // An app's action button authors a tally (respecting scope) and routes to it;
+    // revoke toggles the app's access and re-renders its page.
+    const appAct = e.target.closest('[data-app-action]');
+    if (appAct) {
+      e.preventDefault();
+      const app = appById(appAct.getAttribute('data-app-action'));
+      if (app) runAppAction(app);
+      return;
+    }
+    const appRev = e.target.closest('[data-app-revoke]');
+    if (appRev) {
+      e.preventDefault();
+      const app = appById(appRev.getAttribute('data-app-revoke'));
+      if (app) { toggleAppRevoked(app); renderAppDetail(app); }
       return;
     }
 
@@ -2377,6 +2686,7 @@
   function resetDemo() {
     if (!confirm('Reset the demo? This clears your changes and restores the starting notches.')) return;
     labels = demoLabels();
+    apps = demoApps();
     notches = demoSeed();
     tallies = demoTallies();
     records = demoRecords();
@@ -2386,8 +2696,8 @@
   }
 
   // ---------- top-level nav ----------
-  // Three top-level views — Notches, Tallies and the Ledger — as a slim tab row
-  // under the status line. Injected here (not the page shell) so the whole
+  // Four top-level views — Notches, Tallies, the Ledger and Apps — as a slim tab
+  // row under the status line. Injected here (not the page shell) so the whole
   // feature stays in this file — no server-side template change — mirroring the
   // demo bar. route() keeps the active tab in step via setNav().
   function mountNav() {
@@ -2400,7 +2710,8 @@
     nav.innerHTML =
       '<a href="#/" data-nav="notches">Notches</a>' +
       '<a href="#/t" data-nav="tallies">Tallies</a>' +
-      '<a href="#/ledger" data-nav="ledger">Ledger</a>';
+      '<a href="#/ledger" data-nav="ledger">Ledger</a>' +
+      '<a href="#/apps" data-nav="apps">Apps</a>';
     anchor.parentNode.insertBefore(nav, anchor.nextSibling);
     setNav();
   }
