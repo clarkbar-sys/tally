@@ -53,6 +53,24 @@ mkdir -p /etc/tally
 chgrp "$SERVICE_USER" /etc/tally
 chmod 0750 /etc/tally
 
+ENVFILE=/etc/tally/tally.env
+if [ ! -f "$ENVFILE" ]; then
+	echo "==> writing default $ENVFILE"
+	cat >"$ENVFILE" <<-'EOF'
+	# tally environment overrides — edit, then: systemctl restart tally
+	# Never overwritten by install.sh; only written once, on first install.
+	#TALLY_HOSTNAME=tally
+	#TALLY_STATE_DIR=/var/lib/tally/tsnet
+	# Uncomment if the tailnet has no MagicDNS HTTPS certs (serves plain HTTP
+	# on :80 on the tailnet instead of HTTPS on :443):
+	#TALLY_HTTP_ONLY=1
+	EOF
+	chgrp "$SERVICE_USER" "$ENVFILE"
+	chmod 0640 "$ENVFILE"
+else
+	echo "==> keeping existing $ENVFILE"
+fi
+
 echo "==> installing systemd unit -> $UNIT"
 install -m 0644 "$SCRIPT_DIR/tally.service" "$UNIT"
 systemctl daemon-reload

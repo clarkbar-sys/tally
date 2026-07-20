@@ -44,6 +44,21 @@ public. It's safe to re-run any time to pull and install the latest `main`.
    `https://`. Without it, run with `TALLY_HTTP_ONLY=1` (plain HTTP on the
    tailnet) as a fallback.
 
+## Configuration
+
+`install.sh` writes `/etc/tally/tally.env` on first install (commented out,
+defaults matching the unit) and never touches it again — edit it to change
+`TALLY_HOSTNAME`, `TALLY_STATE_DIR`, or set `TALLY_HTTP_ONLY=1`, then:
+
+```sh
+sudo systemctl restart tally
+```
+
+Editing `deploy/tally.service` directly instead doesn't stick: re-running
+`install.sh` to upgrade always reinstalls the packaged unit, so any hand edit
+there is silently lost on the next install/upgrade. The env file is the
+persistent override point.
+
 ## Install
 
 ```sh
