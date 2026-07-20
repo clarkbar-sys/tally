@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.4.0...tally-v0.5.0) (2026-07-20)
+
+
+### Features
+
+* **web:** binary data in the substrate — add-blob change op ([#85](https://github.com/clarkbar-sys/tally/issues/85)) ([db57d7d](https://github.com/clarkbar-sys/tally/commit/db57d7dbccf90c1cf2642322859b72f3b1a4bca9))
+* **web:** ledger — browse the data a merged tally wrote ([#84](https://github.com/clarkbar-sys/tally/issues/84)) ([cbb979e](https://github.com/clarkbar-sys/tally/commit/cbb979e473fea86b9a338613c3b71c7ef9ed82c9))
+* **web:** tallies — reviewable proposals that merge into notches ([#82](https://github.com/clarkbar-sys/tally/issues/82)) ([c111d09](https://github.com/clarkbar-sys/tally/commit/c111d09936d0933d72b700488a50b6ea4c3533c0))
+
 ## [0.4.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.3.0...tally-v0.4.0) (2026-07-20)
 
 
