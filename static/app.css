@@ -572,6 +572,9 @@
   .lab.open{ --lc: var(--good); }
   .lab.add{ --lc: var(--ink-dim); color: var(--ink-dim); border-style: dashed; background: transparent; cursor: pointer; }
   .lab.add::before{ display: none; }
+  /* a custom-colored label (its own picked bg/fg, set inline) skips the dot —
+     the whole pill is already that color, so a same-color dot would vanish */
+  .lab.custom::before{ display: none; }
 
   .chip{ display: inline-flex; align-items: center; gap: 6px; background: var(--bg-raised-2); color: var(--ink-dim); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 10px; font-size: 12px; font-weight: 600; }
   .chip .x{ border: none; background: none; color: inherit; cursor: pointer; opacity: .6; font-size: 13px; line-height: 1; padding: 0; }
@@ -767,17 +770,28 @@
   .menu-item.good svg{ color: var(--good); }
 
   /* label popover: existing labels are remove-buttons, plus an add field */
-  .menu-labels{ display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 4px; }
+  .menu-labels{ display: flex; flex-direction: column; gap: 6px; padding: 2px 4px 4px; }
+  .menu-label-row{ display: flex; align-items: center; gap: 6px; }
   .menu-label{
     display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 2px;
     border: 1px solid var(--line); border-radius: 999px; background: var(--bg-raised-2);
-    cursor: pointer; transition: border-color .12s ease;
+    cursor: pointer; transition: border-color .12s ease; flex: 1 1 auto; min-width: 0;
   }
   .menu-label:hover{ border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
-  .menu-label .lab{ text-shadow: none; pointer-events: none; }
-  .menu-label .x{ color: var(--ink-dim); font-size: 14px; line-height: 1; padding: 0 2px; }
+  .menu-label .lab{ text-shadow: none; pointer-events: none; overflow: hidden; text-overflow: ellipsis; }
+  .menu-label .x{ color: var(--ink-dim); font-size: 14px; line-height: 1; padding: 0 2px; flex-shrink: 0; }
   .menu-label:hover .x{ color: var(--danger); }
   .menu-label:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* the two color pickers on a label row: background, then text color */
+  .lab-color{
+    width: 22px; height: 22px; padding: 0; border: 1px solid var(--line-strong);
+    border-radius: 6px; background: none; cursor: pointer; flex-shrink: 0;
+  }
+  .lab-color::-webkit-color-swatch-wrapper{ padding: 2px; }
+  .lab-color::-webkit-color-swatch{ border: none; border-radius: 4px; }
+  .lab-color::-moz-color-swatch{ border: none; border-radius: 4px; }
+  .lab-color:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
 
   /* ---------- sub-notches roll-up (foot of the notch box) ----------
      Sub-notches moved out of their own section into a collapsible roll-up under
