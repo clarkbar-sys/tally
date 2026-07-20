@@ -880,7 +880,17 @@
               <button type="button" data-status="open" aria-pressed="true"><span class="fdot" aria-hidden="true"></span>Open <span class="n">0</span></button>
               <button type="button" data-status="closed" aria-pressed="false"><span class="fdot" aria-hidden="true"></span>Closed <span class="n">0</span></button>
             </div>
-            <button class="btn primary sm" id="new-notch" type="button">New notch</button>
+            <div class="menu" data-menu="new-notch">
+              <button class="btn primary sm" id="new-notch" type="button" data-menu-trigger aria-haspopup="true" aria-expanded="false">New notch</button>
+              <div class="menu-pop right">
+                <div class="menu-title">New notch</div>
+                <form class="stack" id="new-notch-form" autocomplete="off" style="gap:8px">
+                  <input class="input" id="new-notch-title" type="text" placeholder="Title…"/>
+                  <button class="btn primary sm" type="submit">Add</button>
+                </form>
+                <button class="btn ghost sm" type="button" id="new-notch-open" style="width:100%; margin-top:6px">Open full page →</button>
+              </div>
+            </div>
           </div>
           <div id="notch-list" class="stack"></div>
         </div>
@@ -1813,6 +1823,20 @@
 
   function onSubmit(e) {
     const f = e.target;
+    if (f.id === 'new-notch-form') {
+      e.preventDefault();
+      const box = document.getElementById('new-notch-title');
+      const title = box.value.trim();
+      if (!title) return;
+      createNotch(title, null).then(() => {
+        box.value = '';
+        const menu = f.closest('.menu');
+        if (menu) closeMenuEl(menu);
+        const search = document.getElementById('search');
+        renderCards(search ? search.value : DEFAULT_QUERY);
+      }).catch(() => {});
+      return;
+    }
     if (f.id === 'sub-form') {
       e.preventDefault();
       const parent = currentDetail(); if (!parent) return;
@@ -1920,7 +1944,11 @@
     if (!menu) return;
     const willOpen = !menu.classList.contains('open');
     document.querySelectorAll('.menu.open').forEach(closeMenuEl);
-    if (willOpen) openMenuEl(menu);
+    if (willOpen) {
+      openMenuEl(menu);
+      const input = menu.querySelector('.menu-pop input[type="text"]');
+      if (input) input.focus();
+    }
   }
 
   function onDocClick(e) {
@@ -1963,9 +1991,11 @@
       return;
     }
 
-    if (e.target.closest('#new-notch')) {
+    if (e.target.closest('#new-notch-open')) {
       e.preventDefault();
-      createNotch('', null).then((n) => { location.hash = '#/n/' + n.id; }).catch(() => {});
+      const box = document.getElementById('new-notch-title');
+      const title = box ? box.value.trim() : '';
+      createNotch(title, null).then((n) => { location.hash = '#/n/' + n.id; }).catch(() => {});
       return;
     }
 
