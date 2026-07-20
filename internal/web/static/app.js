@@ -16,8 +16,15 @@
 // localhost without the browser's storage layer ever getting in the way;
 // durable persistence is a later concern.
 //
-// (A "tally" — resolving/tallying-up notches — is a later concept; v1 is just
-// the notches and their attachments.)
+// TALLIES: a tally is to a notch what a pull request is to an issue — a
+// reviewable proposal. It carries a typed batch of data changes (its "diff") and
+// a set of linked notches; merging it applies the changes to the substrate and
+// closes those notches, stamping each with an audit event that points back to
+// the tally (the tally-stick metaphor: merge the two halves, the record is
+// settled). Third-party providers surface their data the same way — a tally
+// authored by the provider, waiting to be accepted or declined — so the user,
+// not the provider, decides what enters the system. See the state/CRUD/merge
+// block below (createTally … mergeTally) and the "tally views" render block.
 //
 // Data model (`notches`, an in-memory array keyed by id):
 //   Notch { id, title, body, tags:[name],
@@ -75,6 +82,24 @@
   // ---------- state ----------
   let notches = []; // in-memory source of truth, mirrored to IndexedDB
   let labels = []; // global label registry — see the LABELS note up top
+  // TALLIES: a tally is to a notch what a pull request is to an issue — a
+  // reviewable *proposal* that, once merged, applies a batch of typed data
+  // changes to the substrate and closes the notches it links (the tally-stick
+  // metaphor: merge the two halves and the record is settled). Third-party
+  // providers (music, bank, calendar) surface their data the same way — as a
+  // tally authored by that provider, waiting to be accepted or declined — so the
+  // user, not the provider, decides what enters the system. See the TALLIES note
+  // and mergeTally() below. `records` is the demo stand-in for the durable data
+  // substrate (SQLite/IndexedDB tables); a merged tally writes its rows there,
+  // each stamped with the tally it came from (`talliedFrom`) for provenance.
+  //   Tally { id, title, body, author, status:'open'|'merged'|'declined',
+  //           changes:[Change], linkedNotches:[notchId], events:[Event],
+  //           createdAt, updatedAt, mergedAt }
+  //   Change ∈ { op:'add-notch', title, body, tags:[name] }
+  //          | { op:'add-records', dataset, rows:[{summary}] }
+  //   Record { id, dataset, summary, source, at, talliedFrom }
+  let tallies = []; // proposals — parallel to `notches`
+  let records = []; // the applied data substrate (SQLite/IndexedDB stand-in)
   const now = () => Date.now();
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const byId = (id) => notches.find((n) => n.id === id);
@@ -252,9 +277,73 @@
     ];
   }
 
+  // demoTallies seeds the starting proposals: an open provider tally (third-party
+  // data awaiting your accept/decline), an open user tally that only closes a
+  // linked notch (a PR that "closes #12"), and one already merged so the list
+  // shows a settled state. demoRecords seeds the substrate to match the merged
+  // one, so its provenance is consistent from the first load.
+  function demoTallies() {
+    const t = now();
+    return [
+      {
+        id: 't_demo_import', title: 'Import 3 recent Spotify plays', author: 'Spotify',
+        status: 'open',
+        body: [
+          'A **connected provider** is proposing data.',
+          '',
+          "Nothing lands in your tally until *you* merge it — accept what you want, decline the rest. This is how third-party data (music, bank, calendar) enters the system: as a reviewable tally, never a silent write.",
+        ].join('\n'),
+        changes: [{ op: 'add-records', dataset: 'spotify.plays', rows: [
+          { summary: 'Radiohead — Weird Fishes' },
+          { summary: 'Khruangbin — Maria También' },
+          { summary: 'Bonobo — Kerala' },
+        ] }],
+        linkedNotches: [],
+        events: [{ id: uid('e_'), kind: 'opened', at: t - 6000, author: 'Spotify' }],
+        createdAt: t - 6000, updatedAt: t - 6000, mergedAt: null,
+      },
+      {
+        id: 't_demo_wrap', title: 'Wrap up the shopping list', author: 'you',
+        status: 'open',
+        body: 'Like a PR that says *closes #12*, merging this tally closes the notch linked below — automatically, with an audit line added to that notch pointing back here.',
+        changes: [],
+        linkedNotches: ['n_demo_list'],
+        events: [
+          { id: uid('e_'), kind: 'opened', at: t - 4000, author: 'you' },
+          { id: uid('e_'), kind: 'linked', at: t - 3500, notchId: 'n_demo_list', title: 'A quick checklist' },
+        ],
+        createdAt: t - 4000, updatedAt: t - 3500, mergedAt: null,
+      },
+      {
+        id: 't_demo_done', title: 'Seed the pantry inventory', author: 'you',
+        status: 'merged',
+        body: 'An example of a tally already merged — its rows have been written to the substrate.',
+        changes: [{ op: 'add-records', dataset: 'pantry.items', rows: [
+          { summary: 'Olive oil ×1' }, { summary: 'Basmati rice ×2' },
+        ], applied: true }],
+        linkedNotches: [],
+        events: [
+          { id: uid('e_'), kind: 'opened', at: t - 9000, author: 'you' },
+          { id: uid('e_'), kind: 'merged', at: t - 8000, changes: 1, closed: 0 },
+        ],
+        createdAt: t - 9000, updatedAt: t - 8000, mergedAt: t - 8000,
+      },
+    ];
+  }
+
+  function demoRecords() {
+    const t = now();
+    return [
+      { id: uid('r_'), dataset: 'pantry.items', summary: 'Olive oil ×1', source: 'you', at: t - 8000, talliedFrom: 't_demo_done' },
+      { id: uid('r_'), dataset: 'pantry.items', summary: 'Basmati rice ×2', source: 'you', at: t - 8000, talliedFrom: 't_demo_done' },
+    ];
+  }
+
   function load() {
     labels = demoLabels();
     notches = demoSeed();
+    tallies = demoTallies();
+    records = demoRecords();
   }
   // persist records an edit. In demo mode there is nothing to write to — the
   // record already lives in `notches` by reference — so we just stamp the time
@@ -365,6 +454,140 @@
     n.tags.push(label.name);
     logEvent(n, 'labeled', { name: label.name });
     await persist(n);
+  }
+
+  // ---------- tallies: proposals over the substrate ----------
+  const tallyById = (id) => tallies.find((t) => t.id === id);
+  const sortTallies = (arr) => [...arr].sort((a, b) => b.updatedAt - a.updatedAt);
+  const tallyStatus = (t) => t.status || 'open';
+  // Every tally that links a given notch — the notch detail shows these so the
+  // issue↔PR relationship reads from both ends, not just after a merge.
+  const talliesForNotch = (n) => sortTallies(tallies.filter((t) => (t.linkedNotches || []).includes(n.id)));
+
+  // persistTally mirrors persist(): in demo mode there's nothing to write to, so
+  // it just stamps the time and refreshes the status line. Kept async for parity.
+  function persistTally(t) {
+    t.updatedAt = now();
+    ticker();
+    return Promise.resolve();
+  }
+
+  function createTally(title) {
+    const t = now();
+    const tally = {
+      id: uid('t_'), title: (title || '').trim(), body: '', author: 'you',
+      status: 'open', changes: [], linkedNotches: [],
+      events: [{ id: uid('e_'), kind: 'opened', at: t, author: 'you' }],
+      createdAt: t, updatedAt: t, mergedAt: null,
+    };
+    tallies.push(tally);
+    ticker();
+    return Promise.resolve(tally);
+  }
+
+  async function addTallyComment(t, body) {
+    const text = body.trim();
+    if (!text) return;
+    logEvent(t, 'comment', { body: text });
+    await persistTally(t);
+  }
+
+  // addChange appends one typed change to an open tally's diff. The op vocabulary
+  // is deliberately tiny (add-notch, add-records) — it's the contract every future
+  // provider and the eventual SQLite migration targets, so it stays small on
+  // purpose. A change on a merged/declined tally is refused: the diff is frozen
+  // once the tally leaves the open state.
+  async function addChange(t, change) {
+    if (tallyStatus(t) !== 'open') return;
+    t.changes.push(change);
+    await persistTally(t);
+  }
+
+  async function linkNotch(t, notchId) {
+    if (tallyStatus(t) !== 'open') return;
+    const n = byId(notchId);
+    if (!n || t.linkedNotches.includes(notchId)) return;
+    t.linkedNotches.push(notchId);
+    logEvent(t, 'linked', { notchId, title: n.title });
+    await persistTally(t);
+  }
+
+  async function unlinkNotch(t, notchId) {
+    if (tallyStatus(t) !== 'open') return;
+    const n = byId(notchId);
+    t.linkedNotches = t.linkedNotches.filter((id) => id !== notchId);
+    logEvent(t, 'unlinked', { notchId, title: n ? n.title : '' });
+    await persistTally(t);
+  }
+
+  // applyChange migrates one change into the substrate. add-notch creates a new
+  // notch (data entering the system as an annotatable container); add-records
+  // writes rows into `records`, each stamped talliedFrom so its provenance — which
+  // tally admitted it — is never lost. It marks the change `applied` so the diff
+  // can show it landed. This is the single seam a real backend replaces.
+  function applyChange(t, ch) {
+    if (ch.op === 'add-notch') {
+      const t0 = now();
+      const tags = (ch.tags || []).map((name) => ensureLabel(name).name);
+      const n = {
+        id: uid('n_'), title: (ch.title || '').trim(), body: ch.body || '', tags,
+        events: [
+          { id: uid('e_'), kind: 'opened', at: t0 },
+          { id: uid('e_'), kind: 'tally', at: t0, tallyId: t.id, title: t.title, action: 'created' },
+        ],
+        parentId: null, status: 'open', createdAt: t0, updatedAt: t0,
+      };
+      notches.push(n);
+      ch.appliedNotchId = n.id;
+    } else if (ch.op === 'add-records') {
+      const at = now();
+      for (const row of ch.rows || []) {
+        records.push({ id: uid('r_'), dataset: ch.dataset, summary: row.summary, source: t.author, at, talliedFrom: t.id });
+      }
+    }
+    ch.applied = true;
+  }
+
+  // mergeTally is the tally-stick moment: settle the record. It applies every
+  // change to the substrate, then closes each linked notch as done — stamping an
+  // audit event on that notch that links back here, so the notch's own timeline
+  // shows which tally closed it. Finally it records the merge on the tally's log
+  // and freezes it. Merge is always the *user's* action, even for a provider's
+  // tally — that's the consent gate.
+  async function mergeTally(t) {
+    if (tallyStatus(t) !== 'open') return;
+    for (const ch of t.changes) applyChange(t, ch);
+    let closed = 0;
+    for (const id of t.linkedNotches) {
+      const n = byId(id);
+      if (!n || notchStatus(n) === 'done') continue;
+      n.status = 'done';
+      logEvent(n, 'tally', { tallyId: t.id, title: t.title, action: 'merged' });
+      n.updatedAt = now();
+      closed++;
+    }
+    t.status = 'merged';
+    t.mergedAt = now();
+    logEvent(t, 'merged', { changes: t.changes.length, closed });
+    await persistTally(t);
+  }
+
+  // Declining leaves the substrate and every linked notch untouched — the whole
+  // point of the review gate. The tally freezes as declined but keeps its record.
+  async function declineTally(t) {
+    if (tallyStatus(t) !== 'open') return;
+    t.status = 'declined';
+    logEvent(t, 'declined', {});
+    await persistTally(t);
+  }
+
+  // A declined tally can be reopened (nothing was applied, so it's safe). A merged
+  // one is terminal in the demo — reverting an applied change is a later concern.
+  async function reopenTally(t) {
+    if (tallyStatus(t) !== 'declined') return;
+    t.status = 'open';
+    logEvent(t, 'reopened', {});
+    await persistTally(t);
   }
 
   // ---------- helpers ----------
@@ -557,11 +780,14 @@
       for (const name of n.tags) tags.add(name);
     }
     const open = notches.filter((n) => notchStatus(n) === 'open').length;
+    const openTallies = tallies.filter((t) => tallyStatus(t) === 'open').length;
     el.innerHTML =
       `<span class="stat"><b>${open}</b> open</span>` +
       `<span class="stat"><b class="up">${done}</b> of <b>${total}</b> tasks done</span>` +
       `<span class="stat"><b>${tags.size}</b> tags</span>` +
-      `<span class="stat"><b>${files}</b> file${files === 1 ? '' : 's'}</span>`;
+      `<span class="stat"><b>${files}</b> file${files === 1 ? '' : 's'}</span>` +
+      `<span class="stat"><b>${openTallies}</b> open ${openTallies === 1 ? 'tally' : 'tallies'}</span>` +
+      `<span class="stat"><b>${records.length}</b> record${records.length === 1 ? '' : 's'}</span>`;
   }
 
   // ---------- cards ----------
@@ -714,6 +940,8 @@
     dots: svgIcon('<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>'),
     caret: svgIcon('<path d="M9 6l6 6-6 6"/>', 2.4),
     plus: svgIcon('<path d="M12 5v14"/><path d="M5 12h14"/>', 2.4),
+    // git-merge glyph — the tally's identity mark and the "merged" audit event.
+    merge: svgIcon('<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="9" r="3"/><path d="M18 12a6 6 0 0 1-6 6"/><path d="M6 9v6"/>'),
     // Attachment affordances: a paperclip for the composer action, and image /
     // file / download glyphs for the attachment cards.
     clip: svgIcon('<path d="M21 10.5 11.5 20a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.6 1.6 0 0 1-2.3-2.3l7.8-7.8"/>'),
@@ -745,15 +973,24 @@
       `<span class="pttl">${esc(title)}</span></a>`;
   }
 
-  // A one-line event on the rail: icon + "you <did something> · <when>".
-  function evSmall(cls, icon, inner, at) {
+  // A one-line event on the rail: icon + "<actor> <did something> · <when>". The
+  // actor defaults to "you"; a provider-authored tally passes its own name.
+  function evSmall(cls, icon, inner, at, actor) {
     return `<div class="ev small ${cls}"><span class="icon">${icon}</span>` +
-      `<span class="line"><b>you</b> ${inner} <span class="when">${fmtDate(at)}</span></span></div>`;
+      `<span class="line"><b>${esc(actor || 'you')}</b> ${inner} <span class="when">${fmtDate(at)}</span></span></div>`;
+  }
+  // Same rail, but for a passive/system line with no actor (e.g. a notch "closed
+  // by tally X" — the tally acted, not you), so no bold "you" is prepended.
+  function evSystem(cls, icon, inner, at) {
+    return `<div class="ev small ${cls}"><span class="icon">${icon}</span>` +
+      `<span class="line">${inner} <span class="when">${fmtDate(at)}</span></span></div>`;
   }
 
   // A comment card — or, once deleted, its tombstone: the body stays, struck
-  // through and dimmed, so the record is never actually lost.
-  function commentEventHTML(ev) {
+  // through and dimmed, so the record is never actually lost. delAttr names the
+  // data-attribute the delete button carries, so the same card serves both notch
+  // comments (data-del-comment) and tally comments (data-del-tally-comment).
+  function commentEventHTML(ev, delAttr) {
     const when = fmtDate(ev.at);
     if (ev.deleted) {
       return '<div class="ev card deleted danger">' +
@@ -766,7 +1003,7 @@
       `<span class="icon">${ICON.comment}</span>` +
       '<div class="box"><div class="box-head"><span><b>you</b> commented</span>' +
       `<span class="row" style="gap:8px;align-items:center"><span class="when">${when}</span>` +
-      `<button class="x" type="button" data-del-comment="${esc(ev.id)}" aria-label="delete comment">&times;</button></span></div>` +
+      `<button class="x" type="button" ${delAttr || 'data-del-comment'}="${esc(ev.id)}" aria-label="delete comment">&times;</button></span></div>` +
       `<div class="box-body md-body">${mdRender(ev.body)}</div></div></div>`;
   }
 
@@ -832,6 +1069,12 @@
         return evSmall('', ICON.branch, `added the sub-notch <a href="#/n/${esc(ev.subId)}" class="ev-link">${esc(title)}</a>`, ev.at);
       }
       case 'renamed': return evSmall('', ICON.pencil, `renamed this to <b>${esc(ev.to || 'untitled')}</b>`, ev.at);
+      case 'tally': {
+        const link = `<a href="#/t/${esc(ev.tallyId)}" class="ev-link">${esc(ev.title || 'a tally')}</a>`;
+        return ev.action === 'created'
+          ? evSystem('accent', ICON.merge, `added by tally ${link}`, ev.at)
+          : evSystem('merged', ICON.merge, `closed by tally ${link}`, ev.at);
+      }
       case 'status': {
         if (ev.status === 'done') return evSmall('good', ICON.done, 'closed this notch as <b>done</b>', ev.at);
         if (ev.status === 'not_planned') return evSmall('', ICON.skip, 'closed this notch as <b>not planned</b>', ev.at);
@@ -992,6 +1235,26 @@
       `<div class="subs-body">${list}</div></div>`;
   }
 
+  // A compact link to a tally with its state dot — used to show, on a notch, the
+  // tallies that link it (the issue→PR direction of the relationship).
+  function tallyRefChip(t) {
+    const s = tallyStatus(t);
+    const title = t.title.trim() || 'untitled';
+    return `<a class="parent-chip" href="#/t/${esc(t.id)}" title="Tally (${esc(s)}): ${esc(title)}">` +
+      `<span class="pdot ${s}" aria-hidden="true">${ICON.merge}</span>` +
+      `<span class="pttl">${esc(title)}</span></a>`;
+  }
+
+  // The tallies that link this notch, shown on the detail so you can see what's
+  // proposed to close it before any merge happens. Hidden when there are none.
+  function notchTalliesBlock(n) {
+    const ts = talliesForNotch(n);
+    if (!ts.length) return '';
+    return '<div class="notch-tallies">' +
+      `<span class="nt-label">${ICON.merge}<span>Tallies</span></span>` +
+      `<span class="nt-chips">${ts.map(tallyRefChip).join('')}</span></div>`;
+  }
+
   function renderDetail(n) {
     titleBaseline = n.title || '';
 
@@ -1012,6 +1275,7 @@
         <div class="section-body stack">
           ${labelsRow(n)}
           <label class="field"><span>Title</span><input class="input title-input" id="title" type="text" value="${esc(n.title)}" placeholder="Title"/></label>
+          ${notchTalliesBlock(n)}
           ${subsBlock(n)}
         </div>
       </section>
@@ -1043,6 +1307,308 @@
     applyOpenMenu();
   }
 
+  // ---------- tally views ----------
+  // Per-view UI state for the tally description editor (Write vs Preview), keyed
+  // by tally id — the notch detail's detailUI analogue.
+  let tallyUI = { id: null, bodyTab: 'preview' };
+  function ensureTallyUI(t) {
+    if (tallyUI.id !== t.id) tallyUI = { id: t.id, bodyTab: (t.body || '').trim() ? 'preview' : 'write' };
+    return tallyUI;
+  }
+  function tallyBodyTabFor(t) { return ensureTallyUI(t).bodyTab; }
+  let tallyTitleBaseline = '';
+
+  function currentTally() {
+    const m = location.hash.match(/^#\/t\/(.+)$/);
+    return m ? tallyById(m[1]) : null;
+  }
+
+  // A tally's state as a header pill (open / merged / declined). Merged wears a
+  // theme-woven violet (pink×blue) so it reads as "settled", distinct from a
+  // notch's green "done".
+  function tallyStatePill(t) {
+    const s = tallyStatus(t);
+    if (s === 'merged') return `<span class="state merged">${ICON.merge} Merged</span>`;
+    if (s === 'declined') return `<span class="state np">${ICON.skip} Declined</span>`;
+    return `<span class="state open">${ICON.dot} Open</span>`;
+  }
+  function tallyStateLab(t) {
+    const s = tallyStatus(t);
+    if (s === 'merged') return '<span class="lab merged">merged</span>';
+    if (s === 'declined') return '<span class="lab gray">declined</span>';
+    return '<span class="lab open">open</span>';
+  }
+
+  // ----- the diff: a tally's typed changes, rendered as +added lines -----
+  function changeLabel(ch) {
+    if (ch.op === 'add-notch') return 'new notch';
+    if (ch.op === 'add-records') return `${(ch.rows || []).length} record${(ch.rows || []).length === 1 ? '' : 's'} → ${ch.dataset || 'data'}`;
+    return ch.op;
+  }
+  function changeLines(ch) {
+    if (ch.op === 'add-notch') return [ch.title || 'untitled'];
+    if (ch.op === 'add-records') return (ch.rows || []).map((r) => r.summary);
+    return [];
+  }
+  function changesBlock(t) {
+    const open = tallyStatus(t) === 'open';
+    const rows = t.changes.length
+      ? t.changes.map((ch, i) => {
+          const applied = ch.applied || tallyStatus(t) === 'merged';
+          const lines = changeLines(ch).map((l) => `<div class="diff-line"><span class="diff-mark">+</span><span>${esc(l)}</span></div>`).join('');
+          const tail = applied
+            ? '<span class="diff-applied">applied</span>'
+            : (open ? `<button class="x" type="button" data-del-change="${i}" aria-label="remove change">&times;</button>` : '');
+          return `<div class="diff-change${applied ? ' applied' : ''}">` +
+            `<div class="diff-head"><span class="diff-op">${esc(changeLabel(ch))}</span>${tail}</div>` +
+            `<div class="diff-lines">${lines}</div></div>`;
+        }).join('')
+      : '<span class="swatch-note">No data changes — this tally only closes its linked notches.</span>';
+    const form = open
+      ? '<form class="change-form" id="change-form" autocomplete="off">' +
+        '<select class="select" id="change-op" aria-label="Change type">' +
+        '<option value="add-notch">Add a notch</option>' +
+        '<option value="add-records">Add a data record</option></select>' +
+        '<input class="input" id="change-text" type="text" placeholder="notch title, or record summary…"/>' +
+        '<input class="input" id="change-dataset" type="text" placeholder="dataset for records, e.g. spotify.plays"/>' +
+        `<button class="btn ghost sm" type="submit">${ICON.plus}<span>Add change</span></button></form>`
+      : '';
+    return '<div class="diff-block">' +
+      `<div class="diff-title">Changes${t.changes.length ? ` <span class="count num">${t.changes.length}</span>` : ''}</div>` +
+      `<div class="diff">${rows}</div>${form}</div>`;
+  }
+
+  // ----- linked notches: what the tally closes on merge -----
+  function tallyLinkedBlock(t) {
+    const open = tallyStatus(t) === 'open';
+    const linked = t.linkedNotches.map(byId).filter(Boolean);
+    const list = linked.length
+      ? `<div class="linked-list">${linked.map((n) => {
+          const s = notchStatus(n);
+          const cls = s === 'done' ? 'done' : s === 'not_planned' ? 'np' : 'open';
+          const icon = s === 'done' ? ICON.done : s === 'not_planned' ? ICON.skip : ICON.dot;
+          return '<div class="linked-row">' +
+            `<a class="parent-chip" href="#/n/${esc(n.id)}"><span class="pdot ${cls}" aria-hidden="true">${icon}</span>` +
+            `<span class="pttl">${esc(n.title.trim() || 'untitled')}</span></a>` +
+            (open ? `<button class="x" type="button" data-unlink="${esc(n.id)}" aria-label="unlink notch">&times;</button>` : '') +
+            '</div>';
+        }).join('')}</div>`
+      : '<span class="swatch-note">No linked notches.</span>';
+    const linkedSet = new Set(t.linkedNotches);
+    const candidates = sortByUpdated(notches.filter((n) => !linkedSet.has(n.id)));
+    const form = open && candidates.length
+      ? '<form class="row" id="tally-link-form" autocomplete="off" style="gap:8px">' +
+        `<select class="select" id="tally-link-target" style="flex:1 1 auto">${candidates.map((n) => `<option value="${esc(n.id)}">${esc(pathLabel(n))}</option>`).join('')}</select>` +
+        '<button class="btn ghost sm" type="submit">Link notch</button></form>'
+      : '';
+    const hint = open && linked.length
+      ? `<span class="swatch-note">Merging closes ${linked.length === 1 ? 'this notch' : `these ${linked.length} notches`}.</span>`
+      : '';
+    return `<div class="linked-block"><div class="diff-title">Closes on merge</div>${list}${hint}${form}</div>`;
+  }
+
+  // ----- merge / decline action bar -----
+  function tallyActionsHTML(t) {
+    const s = tallyStatus(t);
+    if (s === 'open') {
+      const parts = [];
+      if (t.changes.length) parts.push(`applies ${t.changes.length} change${t.changes.length === 1 ? '' : 's'}`);
+      if (t.linkedNotches.length) parts.push(`closes ${t.linkedNotches.length} notch${t.linkedNotches.length === 1 ? '' : 'es'}`);
+      const summary = parts.length ? parts.join(' · ') : 'nothing to apply yet';
+      return '<div class="tally-actions">' +
+        `<button class="btn merge" type="button" data-merge>${ICON.merge}<span>Merge tally</span></button>` +
+        '<button class="btn ghost" type="button" data-decline>Decline</button>' +
+        `<span class="tally-actions-note swatch-note">${summary}</span></div>`;
+    }
+    if (s === 'merged') {
+      return `<div class="tally-outcome merged">${ICON.merge}<span>Merged · ${fmtDate(t.mergedAt || t.updatedAt)}</span></div>`;
+    }
+    return '<div class="tally-outcome declined">' +
+      `${ICON.skip}<span>Declined</span>` +
+      '<button class="btn ghost sm" type="button" data-reopen-tally>Reopen</button></div>';
+  }
+
+  function tallyOpeningCardHTML(t) {
+    const opened = (t.events || []).find((e) => e.kind === 'opened');
+    const when = fmtDate(opened ? opened.at : t.createdAt);
+    const actor = (opened && opened.author) || t.author || 'you';
+    const editable = tallyStatus(t) === 'open' && t.author === 'you';
+    const tab = tallyBodyTabFor(t);
+    const rendered = (t.body || '').trim()
+      ? `<div class="md-body">${mdRender(t.body)}</div>`
+      : '<div class="md-body empty"><span class="swatch-note">No description yet.</span></div>';
+    const bodyPane = editable && tab === 'write'
+      ? `<textarea class="textarea md-input" id="tally-body" placeholder="Describe this tally in Markdown…">${esc(t.body || '')}</textarea>`
+      : rendered;
+    const tabs = editable
+      ? '<div class="seg" id="tally-body-tabs" role="group" aria-label="Description editor">' +
+        `<button type="button" data-ttab="write" aria-pressed="${tab === 'write'}">Write</button>` +
+        `<button type="button" data-ttab="preview" aria-pressed="${tab === 'preview'}">Preview</button></div>`
+      : '';
+    return '<div class="ev card accent opening">' +
+      `<span class="icon">${ICON.merge}</span>` +
+      '<div class="box"><div class="box-head">' +
+      `<span><b>${esc(actor)}</b> opened this tally</span><span class="when">${when}</span></div>` +
+      `<div class="box-body stack">${tabs}${bodyPane}</div></div></div>`;
+  }
+
+  function tallyEventHTML(t, ev) {
+    switch (ev.kind) {
+      case 'comment': return commentEventHTML(ev, 'data-del-tally-comment');
+      case 'linked': {
+        const n = ev.notchId ? byId(ev.notchId) : null;
+        const title = (n ? n.title : ev.title) || 'untitled';
+        return evSmall('', ICON.branch, `linked the notch <a href="#/n/${esc(ev.notchId)}" class="ev-link">${esc(title)}</a>`, ev.at);
+      }
+      case 'unlinked': {
+        const n = ev.notchId ? byId(ev.notchId) : null;
+        const title = (n ? n.title : ev.title) || 'untitled';
+        return evSmall('', ICON.untag, `unlinked <b>${esc(title)}</b>`, ev.at);
+      }
+      case 'merged': {
+        const bits = [];
+        if (ev.changes) bits.push(`wrote <b>${ev.changes}</b> change${ev.changes === 1 ? '' : 's'} to the substrate`);
+        if (ev.closed) bits.push(`closed <b>${ev.closed}</b> notch${ev.closed === 1 ? '' : 'es'}`);
+        return evSmall('merged', ICON.merge, `merged this tally${bits.length ? ` — ${bits.join(', ')}` : ''}`, ev.at);
+      }
+      case 'declined': return evSmall('danger', ICON.skip, 'declined this tally', ev.at);
+      case 'reopened': return evSmall('accent', ICON.reopen, 'reopened this tally', ev.at);
+      default: return '';
+    }
+  }
+
+  function tallyCardHTML(t) {
+    const bits = [`<span class="num">${t.changes.length}</span> change${t.changes.length === 1 ? '' : 's'}`];
+    if (t.linkedNotches.length) bits.push(`<span class="num">${t.linkedNotches.length}</span> linked`);
+    const author = t.author && t.author !== 'you' ? `<span class="card-by">by ${esc(t.author)}</span>` : '';
+    return `
+      <a class="notch-card" href="#/t/${esc(t.id)}">
+        <div class="title">${t.title ? esc(t.title) : '<span class="untitled">untitled</span>'}</div>
+        <div class="row" style="margin-top:8px">${tallyStateLab(t)}${author}</div>
+        <div class="meta">${bits.join(' · ')} · updated ${fmtDate(t.updatedAt)}</div>
+      </a>`;
+  }
+
+  // ----- tally list search/filter (mirrors the notch list) -----
+  const DEFAULT_TALLY_QUERY = 'is:open';
+  function tallyParseQuery(q) {
+    const tokens = (q || '').trim().split(/\s+/).filter(Boolean);
+    const statuses = [], text = [];
+    for (const tok of tokens) {
+      const m = /^is:(open|closed|merged|declined)$/i.exec(tok);
+      if (m) statuses.push(m[1].toLowerCase()); else text.push(tok);
+    }
+    return { statuses, text: text.join(' ') };
+  }
+  function tallyMatches(t, q) {
+    const { statuses, text } = tallyParseQuery(q);
+    if (statuses.length) {
+      const s = tallyStatus(t);
+      const ok = statuses.some((st) => (st === 'closed' ? s !== 'open' : s === st));
+      if (!ok) return false;
+    }
+    if (!text) return true;
+    const x = text.toLowerCase();
+    return t.title.toLowerCase().includes(x) || (t.body || '').toLowerCase().includes(x) || (t.author || '').toLowerCase().includes(x);
+  }
+
+  function renderTallyList() {
+    view().innerHTML = `
+      <p class="lede">Tallies — proposed changes to your data. Review what a tally would add or close, then merge it to settle the record (or decline it).</p>
+      <section class="section">
+        <h2><span>Tallies</span></h2>
+        <div class="section-body stack">
+          <label class="field"><span>Search</span><input class="input" id="tally-search" type="search" value="${esc(DEFAULT_TALLY_QUERY)}" placeholder="Filter by title, author, or description… (try is:open, is:merged)"/></label>
+          <div class="row" style="align-items:center; flex-wrap:nowrap">
+            <div class="filter" id="tally-filter" role="group" aria-label="Filter by status" style="flex:1 1 auto">
+              <button type="button" data-tstatus="open" aria-pressed="true"><span class="fdot" aria-hidden="true"></span>Open <span class="n">0</span></button>
+              <button type="button" data-tstatus="closed" aria-pressed="false"><span class="fdot" aria-hidden="true"></span>Closed <span class="n">0</span></button>
+            </div>
+            <button class="btn primary sm" id="new-tally" type="button">New tally</button>
+          </div>
+          <div id="tally-listing" class="stack"></div>
+        </div>
+      </section>`;
+    renderTallyCards(DEFAULT_TALLY_QUERY);
+  }
+  function renderTallyCards(q) {
+    updateTallyFilter(q);
+    const list = document.getElementById('tally-listing');
+    if (!list) return;
+    const rows = sortTallies(tallies).filter((t) => tallyMatches(t, q));
+    if (rows.length === 0) {
+      list.className = 'stack';
+      list.innerHTML = `<p class="swatch-note">${tallies.length === 0 ? 'No tallies yet — hit New tally to propose a change.' : 'Nothing matches that search.'}</p>`;
+      return;
+    }
+    list.className = 'notch-list';
+    list.innerHTML = rows.map(tallyCardHTML).join('');
+  }
+  function updateTallyFilter(q) {
+    const f = document.getElementById('tally-filter');
+    if (!f) return;
+    const openN = tallies.filter((t) => tallyStatus(t) === 'open').length;
+    const { statuses } = tallyParseQuery(q);
+    const isClosed = statuses.some((s) => s === 'closed' || s === 'merged' || s === 'declined');
+    const isOpen = statuses.includes('open') && !isClosed;
+    f.querySelector('[data-tstatus="open"]').setAttribute('aria-pressed', String(isOpen));
+    f.querySelector('[data-tstatus="closed"]').setAttribute('aria-pressed', String(isClosed));
+    f.querySelector('[data-tstatus="open"] .n').textContent = openN;
+    f.querySelector('[data-tstatus="closed"] .n').textContent = tallies.length - openN;
+  }
+  function setTallyFilter(status) {
+    const input = document.getElementById('tally-search');
+    if (!input) return;
+    const { text } = tallyParseQuery(input.value);
+    input.value = `is:${status}` + (text ? ' ' + text : '');
+    renderTallyCards(input.value);
+  }
+
+  function renderTallyDetail(t) {
+    tallyTitleBaseline = t.title || '';
+    const events = (t.events || []).slice().sort((a, b) => a.at - b.at);
+    const rest = events.filter((e) => e.kind !== 'opened').map((e) => tallyEventHTML(t, e)).join('');
+    const editable = tallyStatus(t) === 'open' && t.author === 'you';
+    const titleField = editable
+      ? `<label class="field"><span>Title</span><input class="input title-input" id="tally-title" type="text" value="${esc(t.title)}" placeholder="Title"/></label>`
+      : `<h3 class="tally-title-static">${t.title ? esc(t.title) : '<span class="untitled">untitled</span>'}</h3>`;
+
+    view().innerHTML = `
+      <p class="lede">← <a href="#/t" class="back">all tallies</a></p>
+
+      <section class="section">
+        <h2><span>Tally</span><span class="row head-actions" style="gap:8px">${tallyStatePill(t)}</span></h2>
+        <div class="section-body stack">
+          ${titleField}
+          ${changesBlock(t)}
+          ${tallyLinkedBlock(t)}
+          ${tallyActionsHTML(t)}
+        </div>
+      </section>
+
+      <section class="section">
+        <h2><span>Activity</span><span class="count num">${events.length}</span></h2>
+        <div class="section-body">
+          <div class="timeline">
+            ${tallyOpeningCardHTML(t)}
+            ${rest}
+          </div>
+          <form class="composer" id="tally-comment-form" autocomplete="off">
+            <span class="icon">${ICON.comment}</span>
+            <div class="composer-box">
+              <textarea id="tally-comment-text" placeholder="Leave a comment (Markdown supported)…"></textarea>
+              <div class="composer-foot">
+                <span class="swatch-note">Comments join the log below — nothing here is ever deleted.</span>
+                <div class="composer-actions">
+                  <button class="btn primary sm" type="submit">Comment</button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>`;
+  }
+
   // ---------- lightbox ----------
   // A bare-bones full-screen image viewer for attachment previews: one overlay
   // appended to <body>, dismissed by clicking anywhere or pressing Escape. No
@@ -1070,14 +1636,35 @@
 
   // ---------- router ----------
   function route() {
+    const td = location.hash.match(/^#\/t\/(.+)$/);
+    if (td) {
+      const t = tallyById(td[1]);
+      if (t) { renderTallyDetail(t); setNav(); return; }
+      location.hash = '#/t';
+      return;
+    }
+    if (location.hash === '#/t' || location.hash === '#/t/') { renderTallyList(); setNav(); return; }
     const m = location.hash.match(/^#\/n\/(.+)$/);
     if (m) {
       const n = byId(m[1]);
-      if (n) { renderDetail(n); return; }
+      if (n) { renderDetail(n); setNav(); return; }
       location.hash = '#/';
       return;
     }
     renderList();
+    setNav();
+  }
+
+  // setNav marks the active top-level view (Notches vs Tallies) in the injected
+  // nav. A notch/tally detail counts as being in that section.
+  function setNav() {
+    const nav = document.getElementById('viewnav');
+    if (!nav) return;
+    const onTallies = /^#\/t(\/|$)/.test(location.hash);
+    nav.querySelectorAll('a[data-nav]').forEach((a) => {
+      const active = a.getAttribute('data-nav') === (onTallies ? 'tallies' : 'notches');
+      a.setAttribute('aria-current', active ? 'page' : 'false');
+    });
   }
 
   function currentDetail() {
@@ -1127,6 +1714,42 @@
       if (!name) return;
       detailMenu = 'labels'; // keep the labels popover open for the next add
       addLabelToNotch(n, name).then(() => renderDetail(n));
+      return;
+    }
+    // --- tally forms ---
+    if (f.id === 'change-form') {
+      e.preventDefault();
+      const t = currentTally(); if (!t) return;
+      const op = (document.getElementById('change-op') || {}).value;
+      const text = (document.getElementById('change-text') || {}).value.trim();
+      if (!text) return;
+      let change = null;
+      if (op === 'add-notch') {
+        change = { op: 'add-notch', title: text, body: '', tags: [] };
+      } else if (op === 'add-records') {
+        const dataset = (document.getElementById('change-dataset') || {}).value.trim();
+        if (!dataset) { alert('A data record needs a dataset name (e.g. spotify.plays).'); return; }
+        change = { op: 'add-records', dataset, rows: [{ summary: text }] };
+      }
+      if (change) addChange(t, change).then(() => renderTallyDetail(t));
+      return;
+    }
+    if (f.id === 'tally-link-form') {
+      e.preventDefault();
+      const t = currentTally(); if (!t) return;
+      const sel = document.getElementById('tally-link-target');
+      const id = sel && sel.value;
+      if (!id) return;
+      linkNotch(t, id).then(() => renderTallyDetail(t));
+      return;
+    }
+    if (f.id === 'tally-comment-form') {
+      e.preventDefault();
+      const t = currentTally(); if (!t) return;
+      const box = document.getElementById('tally-comment-text');
+      const text = box.value.trim();
+      if (!text) return;
+      addTallyComment(t, text).then(() => renderTallyDetail(t));
       return;
     }
   }
@@ -1214,6 +1837,81 @@
     if (fbtn) {
       e.preventDefault();
       setStatusFilter(fbtn.getAttribute('data-status'));
+      return;
+    }
+
+    // --- tally interactions ---
+    if (e.target.closest('#new-tally')) {
+      e.preventDefault();
+      createTally('').then((t) => { location.hash = '#/t/' + t.id; }).catch(() => {});
+      return;
+    }
+    const tfbtn = e.target.closest('.filter button[data-tstatus]');
+    if (tfbtn) {
+      e.preventDefault();
+      setTallyFilter(tfbtn.getAttribute('data-tstatus'));
+      return;
+    }
+    if (e.target.closest('[data-merge]')) {
+      e.preventDefault();
+      const t = currentTally(); if (!t) return;
+      const msg = `Merge this tally?` +
+        (t.changes.length ? `\n\nApplies ${t.changes.length} change${t.changes.length === 1 ? '' : 's'} to the substrate.` : '') +
+        (t.linkedNotches.length ? `\nCloses ${t.linkedNotches.length} linked notch${t.linkedNotches.length === 1 ? '' : 'es'}.` : '');
+      if (!confirm(msg)) return;
+      mergeTally(t).then(() => renderTallyDetail(t));
+      return;
+    }
+    if (e.target.closest('[data-decline]')) {
+      e.preventDefault();
+      const t = currentTally(); if (!t) return;
+      declineTally(t).then(() => renderTallyDetail(t));
+      return;
+    }
+    if (e.target.closest('[data-reopen-tally]')) {
+      e.preventDefault();
+      const t = currentTally(); if (!t) return;
+      reopenTally(t).then(() => renderTallyDetail(t));
+      return;
+    }
+    const unlinkBtn = e.target.closest('[data-unlink]');
+    if (unlinkBtn) {
+      e.preventDefault();
+      const t = currentTally(); if (!t) return;
+      unlinkNotch(t, unlinkBtn.getAttribute('data-unlink')).then(() => renderTallyDetail(t));
+      return;
+    }
+    const delChange = e.target.closest('[data-del-change]');
+    if (delChange) {
+      e.preventDefault();
+      const t = currentTally(); if (!t || tallyStatus(t) !== 'open') return;
+      const i = parseInt(delChange.getAttribute('data-del-change'), 10);
+      if (i >= 0 && i < t.changes.length) t.changes.splice(i, 1);
+      persistTally(t).then(() => renderTallyDetail(t));
+      return;
+    }
+    const delTComment = e.target.closest('[data-del-tally-comment]');
+    if (delTComment) {
+      e.preventDefault();
+      const t = currentTally(); if (!t) return;
+      const ev = (t.events || []).find((x) => x.id === delTComment.getAttribute('data-del-tally-comment') && x.kind === 'comment');
+      if (ev) ev.deleted = true;
+      persistTally(t).then(() => renderTallyDetail(t));
+      return;
+    }
+    // Tally description Write / Preview toggle (flush a pending edit first).
+    const ttabBtn = e.target.closest('#tally-body-tabs button[data-ttab]');
+    if (ttabBtn) {
+      const t = currentTally(); if (!t) return;
+      const ta = document.getElementById('tally-body');
+      ensureTallyUI(t).bodyTab = ttabBtn.getAttribute('data-ttab');
+      if (ta && ta.value !== (t.body || '')) {
+        clearTimeout(bodyTimer);
+        t.body = ta.value;
+        persistTally(t).then(() => renderTallyDetail(t));
+      } else {
+        renderTallyDetail(t);
+      }
       return;
     }
 
@@ -1351,6 +2049,23 @@
       persist(n).then(() => renderDetail(n));
       return;
     }
+    // Tally description textarea: commit on blur so a pending debounced edit
+    // survives the next re-render.
+    if (e.target.id === 'tally-body') {
+      const t = currentTally(); if (!t) return;
+      clearTimeout(bodyTimer);
+      if (t.body !== e.target.value) { t.body = e.target.value; persistTally(t); }
+      return;
+    }
+    // Tally title: commit on blur (no rename event — a tally is a short-lived
+    // proposal, not a long-lived record).
+    if (e.target.id === 'tally-title') {
+      const t = currentTally(); if (!t) return;
+      clearTimeout(titleTimer);
+      t.title = e.target.value.trim();
+      persistTally(t);
+      return;
+    }
     // Ticking a task checkbox in the rendered description flips the matching
     // `- [ ]` in the Markdown source and records which task changed.
     const taskBox = e.target.closest('.md-body input[data-task]');
@@ -1369,16 +2084,32 @@
       renderCards(e.target.value);
       return;
     }
+    if (e.target.id === 'tally-search') {
+      renderTallyCards(e.target.value);
+      return;
+    }
     if (e.target.id === 'body') {
       const n = currentDetail(); if (!n) return;
       clearTimeout(bodyTimer);
       bodyTimer = setTimeout(() => { n.body = e.target.value; persist(n); }, 350);
       return;
     }
+    if (e.target.id === 'tally-body') {
+      const t = currentTally(); if (!t) return;
+      clearTimeout(bodyTimer);
+      bodyTimer = setTimeout(() => { t.body = e.target.value; persistTally(t); }, 350);
+      return;
+    }
     if (e.target.id === 'title') {
       const n = currentDetail(); if (!n) return;
       clearTimeout(titleTimer);
       titleTimer = setTimeout(() => { n.title = e.target.value.trim(); persist(n); }, 350);
+      return;
+    }
+    if (e.target.id === 'tally-title') {
+      const t = currentTally(); if (!t) return;
+      clearTimeout(titleTimer);
+      titleTimer = setTimeout(() => { t.title = e.target.value.trim(); persistTally(t); }, 350);
       return;
     }
   }
@@ -1449,9 +2180,30 @@
     if (!confirm('Reset the demo? This clears your changes and restores the starting notches.')) return;
     labels = demoLabels();
     notches = demoSeed();
+    tallies = demoTallies();
+    records = demoRecords();
     ticker();
     if (location.hash) location.hash = ''; // detail view → list (fires route via hashchange)
     else route();
+  }
+
+  // ---------- top-level nav ----------
+  // Two top-level views, Notches and Tallies, as a slim tab row under the status
+  // line. Injected here (not the page shell) so the whole tally feature stays in
+  // this file — no server-side template change — mirroring the demo bar. route()
+  // keeps the active tab in step via setNav().
+  function mountNav() {
+    const anchor = document.getElementById('ticker');
+    if (!anchor || document.getElementById('viewnav')) return;
+    const nav = document.createElement('nav');
+    nav.className = 'viewnav';
+    nav.id = 'viewnav';
+    nav.setAttribute('aria-label', 'Views');
+    nav.innerHTML =
+      '<a href="#/" data-nav="notches">Notches</a>' +
+      '<a href="#/t" data-nav="tallies">Tallies</a>';
+    anchor.parentNode.insertBefore(nav, anchor.nextSibling);
+    setNav();
   }
 
   // ---------- boot ----------
@@ -1459,6 +2211,7 @@
     initTheme();
     load();
     mountDemoBar();
+    mountNav();
     ticker();
     const mount = view();
     mount.addEventListener('submit', onSubmit);
