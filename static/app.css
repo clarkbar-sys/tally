@@ -792,6 +792,23 @@
   .subs:not(.collapsed) .subs-toggle .caret{ transform: rotate(90deg); }
   .subs.collapsed .subs-body{ display: none; }
 
+  /* Sub-notches render as condensed table lines (title · meta · updated) inside
+     the shared .notch-list frame, rather than full cardHTML cards — a roll-up
+     should read at a glance, not repeat the top-level list's layout. */
+  .subs-table{ width: 100%; border-collapse: collapse; }
+  .subs-table tr{ border-top: 1px solid var(--line); transition: background .12s ease; }
+  .subs-table tr:first-child{ border-top: 0; }
+  .subs-table tr:hover{ background: color-mix(in srgb, var(--accent) 5%, var(--bg-raised)); }
+  .subs-table td{ padding: 9px 14px; font-size: 13px; line-height: 1.4; vertical-align: middle; }
+  .subs-table td.subs-title{ font-family: var(--font-display); font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+  .subs-table td.subs-title a{ color: var(--ink); text-decoration: none; }
+  .subs-table td.subs-title a:hover{ text-decoration: underline; }
+  .subs-table td.subs-title .untitled{ color: var(--ink-faint); font-style: italic; }
+  .subs-table td.subs-title .subs-tags{ margin-left: 10px; }
+  .subs-table td.subs-meta,
+  .subs-table td.subs-updated{ color: var(--ink-faint); font-size: 12px; white-space: nowrap; width: 1%; }
+  .subs-table td.subs-updated{ text-align: right; }
+
   .timeline{ position: relative; display: flex; flex-direction: column; gap: 2px; }
   .timeline::before{ content: ""; position: absolute; left: 15px; top: 6px; bottom: 18px; width: 2px; background: var(--line-strong); }
 
