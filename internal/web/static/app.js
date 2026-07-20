@@ -20,12 +20,22 @@
 // the notches and their attachments.)
 //
 // Data model (`notches`, an in-memory array keyed by id):
-//   Notch { id, title, body, tags:[{name,color}],
+//   Notch { id, title, body, tags:[name],
 //           events:[Event],
 //           parentId:string|null, status:'open'|'done'|'not_planned',
 //           createdAt, updatedAt }
 //   Event { id, kind, at, ...payload }   kind ∈ opened | comment | labeled |
 //           unlabeled | task | moved | sub | renamed | status | attachment
+//
+// LABELS: labels are a second array (`labels`), global across the whole app —
+// not owned by any one notch. A notch's `tags` is just a list of label names;
+// the name is the join key. Making a label called "bug" on one notch and
+// later typing "bug" on another reuses the exact same color, and re-coloring
+// a label (the popover's two color pickers) updates every notch showing it
+// at once. Label { name, color:'red'|'amber'|…, bg:hex|null, fg:hex|null } —
+// `color` is the auto-assigned palette swatch (theme-aware CSS); `bg`/`fg`
+// are only set once a color picker has been touched, and then override the
+// palette with a fixed, theme-independent color pair, GitHub-label style.
 // `body` is the Markdown description; tasks are ordinary Markdown task-list
 // items inside it (`- [ ]` / `- [x]`), not a separate structure — mirroring how
 // GitHub issues carry their checklists. A sub-notch is an ordinary notch whose
@@ -64,11 +74,48 @@
 
   // ---------- state ----------
   let notches = []; // in-memory source of truth, mirrored to IndexedDB
+  let labels = []; // global label registry — see the LABELS note up top
   const now = () => Date.now();
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const byId = (id) => notches.find((n) => n.id === id);
 
   const PALETTE = ['red', 'amber', 'green', 'blue', 'pink', 'cyan'];
+
+  // ---------- labels: a single global, shared registry ----------
+  const findLabel = (name) => labels.find((l) => l.name.toLowerCase() === String(name || '').toLowerCase());
+  // ensureLabel finds a label by name (any case) or creates one with the next
+  // palette color, round-robin over how many labels already exist — this is
+  // the one place a new label comes into being.
+  function ensureLabel(name) {
+    const existing = findLabel(name);
+    if (existing) return existing;
+    const label = { name: name.trim(), color: PALETTE[labels.length % PALETTE.length], bg: null, fg: null };
+    labels.push(label);
+    return label;
+  }
+  // A hex color's ideal readable text color (WCAG relative-luminance split) —
+  // the fallback when a label has a custom background but no custom text
+  // color picked yet.
+  function autoContrast(hex) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+    if (!m) return '#111318';
+    const lin = (h) => { const c = parseInt(h, 16) / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const L = 0.2126 * lin(m[1]) + 0.7152 * lin(m[2]) + 0.0722 * lin(m[3]);
+    return L > 0.45 ? '#111318' : '#f5f7fa';
+  }
+  // A palette-name class for the default (theme-aware) look, or an inline
+  // style pinning a custom bg/fg once the label's colors have been picked.
+  function chipStyle(label) {
+    if (!label || !label.bg) return '';
+    const fg = label.fg || autoContrast(label.bg);
+    return ` style="--lc:${esc(label.bg)}; background:${esc(label.bg)}; color:${esc(fg)}; border-color:color-mix(in srgb, ${esc(label.bg)} 60%, var(--line))"`;
+  }
+  function labChip(name) {
+    const label = findLabel(name);
+    if (!label) return `<span class="lab gray">${esc(name)}</span>`;
+    const cls = label.bg ? 'lab custom' : `lab ${esc(label.color || 'gray')}`;
+    return `<span class="${cls}"${chipStyle(label)}>${esc(label.name)}</span>`;
+  }
 
   // Attachments. In demo mode a file's bytes live in memory as a data: URL, so a
   // generous-but-finite cap keeps a stray multi-hundred-MB drop from wedging the
@@ -140,6 +187,15 @@
     "</svg>");
   const DEMO_NOTE = textDataUrl('tally — attachment demo\n\nDrop a photo or any file onto a notch;\nit rides along in memory until you reload.\n');
 
+  // demoLabels seeds the global label registry — same shape ensureLabel builds
+  // at runtime, just with fixed colors so the demo looks the same every load.
+  function demoLabels() {
+    return [
+      { name: 'demo', color: 'blue', bg: null, fg: null },
+      { name: 'errand', color: 'green', bg: null, fg: null },
+    ];
+  }
+
   function demoSeed() {
     const t = now();
     const mk = (o) => Object.assign(
@@ -161,11 +217,11 @@
           '',
           'Use **Reset demo** in the bar above to wipe back to this starting point.',
         ].join('\n'),
-        tags: [{ name: 'demo', color: 'blue' }],
+        tags: ['demo'],
         // A ready-made timeline so the event log has a story to tell on open.
         events: [
           { id: 'e_w1', kind: 'opened', at: t - 5000 },
-          { id: 'e_w2', kind: 'labeled', at: t - 4000, name: 'demo', color: 'blue' },
+          { id: 'e_w2', kind: 'labeled', at: t - 4000, name: 'demo' },
           { id: 'e_w3', kind: 'comment', at: t - 3000, body: 'Notches keep a permanent event log, like a GitHub issue — labels, comments, tasks, status. Nothing you do here ever disappears from the record.' },
           { id: 'e_w4', kind: 'comment', at: t - 2000, deleted: true, body: 'Even a deleted comment stays as a struck-through tombstone.' },
           { id: 'e_w5', kind: 'task', at: t - 1000, text: '(this one is already done)', done: true },
@@ -185,11 +241,11 @@
         id: 'n_demo_list',
         title: 'A quick checklist',
         body: '- [ ] Milk\n- [ ] Coffee\n- [x] Bread',
-        tags: [{ name: 'errand', color: 'green' }],
+        tags: ['errand'],
         updatedAt: t - 2000,
         events: [
           { id: 'e_l1', kind: 'opened', at: t - 3000 },
-          { id: 'e_l2', kind: 'labeled', at: t - 2500, name: 'errand', color: 'green' },
+          { id: 'e_l2', kind: 'labeled', at: t - 2500, name: 'errand' },
           { id: 'e_l3', kind: 'task', at: t - 2000, text: 'Bread', done: true },
         ],
       }),
@@ -197,6 +253,7 @@
   }
 
   function load() {
+    labels = demoLabels();
     notches = demoSeed();
   }
   // persist records an edit. In demo mode there is nothing to write to — the
@@ -464,7 +521,7 @@
     const t = text.toLowerCase();
     return n.title.toLowerCase().includes(t)
       || (n.body || '').toLowerCase().includes(t)
-      || n.tags.some((g) => g.name.toLowerCase().includes(t))
+      || n.tags.some((name) => name.toLowerCase().includes(t))
       || liveComments(n).some((c) => c.body.toLowerCase().includes(t));
   }
 
@@ -486,7 +543,7 @@
       const s = taskStats(n);
       done += s.done; total += s.total;
       files += liveAttachments(n).length;
-      for (const g of n.tags) tags.add(g.name);
+      for (const name of n.tags) tags.add(name);
     }
     const open = notches.filter((n) => notchStatus(n) === 'open').length;
     el.innerHTML =
@@ -516,7 +573,7 @@
     if (files) bits.push(`<span class="num">${files}</span> file${files === 1 ? '' : 's'}`);
     if ((n.body || '').trim() && !s.total) bits.push('description');
     const meta = bits.length ? bits.join(' · ') : 'empty';
-    const tags = statusLab(n) + n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
+    const tags = statusLab(n) + n.tags.map((name) => labChip(name)).join('');
     return `
       <a class="notch-card" href="#/n/${esc(n.id)}">
         <div class="title">${n.title ? esc(n.title) : '<span class="untitled">untitled</span>'}</div>
@@ -658,8 +715,6 @@
     download: svgIcon('<path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/>'),
   };
 
-  const labChip = (name, color) => `<span class="lab ${esc(color || 'gray')}">${esc(name)}</span>`;
-
   function statePill(n) {
     const s = notchStatus(n);
     if (s === 'done') return `<span class="state done">${ICON.done} Done</span>`;
@@ -753,8 +808,8 @@
     switch (ev.kind) {
       case 'comment': return commentEventHTML(ev);
       case 'attachment': return attachmentEventHTML(ev);
-      case 'labeled': return evSmall('accent', ICON.tag, `added the ${labChip(ev.name, ev.color)} label`, ev.at);
-      case 'unlabeled': return evSmall('', ICON.untag, `removed the ${labChip(ev.name, ev.color)} label`, ev.at);
+      case 'labeled': return evSmall('accent', ICON.tag, `added the ${labChip(ev.name)} label`, ev.at);
+      case 'unlabeled': return evSmall('', ICON.untag, `removed the ${labChip(ev.name)} label`, ev.at);
       case 'task': return evSmall(ev.done ? 'good' : '', ev.done ? ICON.check : ICON.box,
         `${ev.done ? 'checked off' : 'unchecked'} <b>${esc(ev.text || 'a task')}</b>`, ev.at);
       case 'moved': {
@@ -826,15 +881,31 @@
     return `${statePill(n)}${parent ? parentChip(parent) : ''}${menu}`;
   }
 
+  // A default hex to seed a label's color pickers before it has custom colors
+  // of its own — the paper theme's take on each palette swatch, just as a
+  // reasonable starting point for the picker (the rendered chip itself still
+  // follows the active theme until a color is actually picked).
+  const PALETTE_HEX = { red: '#c0392b', amber: '#9a6b18', green: '#3f8a55', blue: '#3a5f9e', pink: '#a4478f', cyan: '#2f8a86', gray: '#6f6144' };
+
   // Labels sit right above the title: the live chips read-only, with a kebab whose
-  // popover both adds new labels and removes existing ones (each chip in the
-  // popover is a remove button). Edits keep the popover open so several labels can
-  // be managed in one go.
+  // popover both adds new labels and removes existing ones, and lets each
+  // label's background/text color be repicked — a change here is global, so it
+  // shows up on every notch carrying that label, not just this one. Edits keep
+  // the popover open so several labels can be managed in one go.
   function labelsRow(n) {
-    const chips = n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
+    const chips = n.tags.map((name) => labChip(name)).join('');
     const popChips = n.tags.length
-      ? n.tags.map((g) => `<button class="menu-label" type="button" data-del-tag="${esc(g.name)}" aria-label="remove ${esc(g.name)} label">` +
-          `<span class="lab ${esc(g.color)}">${esc(g.name)}</span><span class="x" aria-hidden="true">&times;</span></button>`).join('')
+      ? n.tags.map((name) => {
+          const label = findLabel(name) || ensureLabel(name);
+          const bgVal = label.bg || PALETTE_HEX[label.color] || PALETTE_HEX.gray;
+          const fgVal = label.fg || autoContrast(bgVal);
+          return '<div class="menu-label-row">' +
+            `<button class="menu-label" type="button" data-del-tag="${esc(label.name)}" aria-label="remove ${esc(label.name)} label">` +
+            `${labChip(label.name)}<span class="x" aria-hidden="true">&times;</span></button>` +
+            `<input class="lab-color" type="color" data-label-bg="${esc(label.name)}" value="${esc(bgVal)}" title="Background color" aria-label="Background color for ${esc(label.name)} label"/>` +
+            `<input class="lab-color" type="color" data-label-fg="${esc(label.name)}" value="${esc(fgVal)}" title="Text color" aria-label="Text color for ${esc(label.name)} label"/>` +
+            '</div>';
+        }).join('')
       : '<span class="swatch-note">No labels yet.</span>';
     return '<div class="labels-row">' +
       `<div class="labels-chips">${chips || '<span class="swatch-note">No labels</span>'}</div>` +
@@ -861,7 +932,7 @@
     if (comments) bits.push(`${comments} comment${comments === 1 ? '' : 's'}`);
     if (files) bits.push(`${files} file${files === 1 ? '' : 's'}`);
     const meta = bits.length ? bits.join(' · ') : '—';
-    const tags = statusLab(n) + n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
+    const tags = statusLab(n) + n.tags.map((name) => labChip(name)).join('');
     return `
       <tr>
         <td class="subs-title">
@@ -1037,10 +1108,10 @@
       const box = document.getElementById('tag-name');
       const name = box.value.trim();
       if (!name) return;
-      if (!n.tags.some((g) => g.name.toLowerCase() === name.toLowerCase())) {
-        const color = PALETTE[n.tags.length % PALETTE.length];
-        n.tags.push({ name, color });
-        logEvent(n, 'labeled', { name, color });
+      if (!n.tags.some((t) => t.toLowerCase() === name.toLowerCase())) {
+        const label = ensureLabel(name); // reuses the global label's color if it already exists
+        n.tags.push(label.name);
+        logEvent(n, 'labeled', { name: label.name });
         detailMenu = 'labels'; // keep the labels popover open for the next add
         persist(n).then(() => renderDetail(n));
       } else {
@@ -1153,9 +1224,8 @@
       e.preventDefault();
       const n = currentDetail(); if (!n) return;
       const name = delTag.getAttribute('data-del-tag');
-      const tag = n.tags.find((g) => g.name === name);
-      n.tags = n.tags.filter((g) => g.name !== name);
-      logEvent(n, 'unlabeled', { name, color: tag ? tag.color : 'gray' });
+      n.tags = n.tags.filter((t) => t !== name);
+      logEvent(n, 'unlabeled', { name });
       detailMenu = 'labels'; // keep the labels popover open after removing one
       persist(n).then(() => renderDetail(n));
       return;
@@ -1188,6 +1258,29 @@
   }
 
   function onChange(e) {
+    // A label's color pickers write straight to the global registry — the
+    // change is visible on every notch that carries this label, not just the
+    // one whose popover is open, so this doesn't persist() any single notch.
+    const bgInput = e.target.closest('[data-label-bg]');
+    if (bgInput) {
+      const label = findLabel(bgInput.getAttribute('data-label-bg'));
+      if (!label) return;
+      label.bg = bgInput.value;
+      detailMenu = 'labels'; // keep the labels popover open
+      const n = currentDetail();
+      if (n) renderDetail(n);
+      return;
+    }
+    const fgInput = e.target.closest('[data-label-fg]');
+    if (fgInput) {
+      const label = findLabel(fgInput.getAttribute('data-label-fg'));
+      if (!label) return;
+      label.fg = fgInput.value;
+      detailMenu = 'labels'; // keep the labels popover open
+      const n = currentDetail();
+      if (n) renderDetail(n);
+      return;
+    }
     // Picking files in the hidden input attaches each to the current notch. Clear
     // the input's value so re-picking the same file fires change again.
     if (e.target.id === 'attach-input') {
@@ -1322,6 +1415,7 @@
 
   function resetDemo() {
     if (!confirm('Reset the demo? This clears your changes and restores the starting notches.')) return;
+    labels = demoLabels();
     notches = demoSeed();
     ticker();
     if (location.hash) location.hash = ''; // detail view → list (fires route via hashchange)
