@@ -7,13 +7,19 @@
 // issue: a title, a Markdown description (where tasks live as `- [ ]` task
 // lists, checked off inline), tags/labels, sub-notches (parent/child like
 // GitHub sub-issues), and a running thread of comments for the paper trail.
-// Everything persists in IndexedDB: no server, no network, no auth, no sync.
-// Reload is the test — it all survives, because it lives in this browser.
+//
+// DEMO MODE: for now tally runs entirely in memory — no IndexedDB, no server,
+// no network, no persistence of any kind. Edits stick as you navigate and
+// re-render (the `notches` array below is the one source of truth), but a
+// reload (F5) starts fresh from the seed data. A demo banner and Reset button
+// make that ephemerality obvious. This keeps the app instantly runnable on
+// localhost without the browser's storage layer ever getting in the way;
+// durable persistence is a later concern.
 //
 // (A "tally" — resolving/tallying-up notches — is a later concept; v1 is just
 // the notches and their attachments.)
 //
-// Data model (one object store, `notches`, keyed by id):
+// Data model (`notches`, an in-memory array keyed by id):
 //   Notch { id, title, body, tags:[{name,color}],
 //           comments:[{id, body, createdAt}],
 //           parentId:string|null, status:'open'|'done'|'not_planned',
@@ -26,127 +32,16 @@
 // restriction is that a notch can't be moved under itself or one of its own
 // descendants, which would make a cycle. A notch is never deleted — it's closed
 // as done or not planned (and can be reopened), same as a GitHub issue.
-//
-// Migration: pre-v3 records carried a plain-text `note` and a structured
-// `items` checklist. On upgrade `note` becomes `body`, and any checklist items
-// are appended to `body` as a Markdown task list, so nothing is lost. Records
-// from before `status` existed are treated as 'open'.
 
 (() => {
   'use strict';
 
-  // ---------- IndexedDB ----------
-  const DB_NAME = 'tally';
-  const DB_VERSION = 3;
-  const STORE = 'notches';
-  const OLD_STORE = 'tallies'; // v1 name, migrated forward
-  let _db = null;
-
-  // upgradeNotch brings one stored record up to the current shape in place. It's
-  // idempotent and defensive so it can run over old `tallies` rows, over v2
-  // `notches`, or as a belt-and-braces pass on load. The big move is v2 → v3:
-  // the plain-text `note` becomes the Markdown `body`, and the structured
-  // `items` checklist is folded into that body as a Markdown task list, so a
-  // user's checklist survives the redesign as editable Markdown.
-  function upgradeNotch(rec) {
-    if (rec.parentId === undefined) rec.parentId = null;
-    if (rec.status === undefined) rec.status = 'open';
-    if (rec.body === undefined) rec.body = typeof rec.note === 'string' ? rec.note : '';
-    if (Array.isArray(rec.items) && rec.items.length) {
-      const list = rec.items
-        .map((i) => `- [${i.done ? 'x' : ' '}] ${String(i.text || '').trim()}`)
-        .join('\n');
-      rec.body = rec.body.trim() ? rec.body.replace(/\s+$/, '') + '\n\n' + list : list;
-    }
-    if (!Array.isArray(rec.comments)) rec.comments = [];
-    delete rec.note;
-    delete rec.items;
-    return rec;
-  }
-
-  function openDB() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = (ev) => {
-        const db = req.result;
-        const upgradeTx = req.transaction;
-        const oldVersion = ev.oldVersion;
-        if (!db.objectStoreNames.contains(STORE)) {
-          db.createObjectStore(STORE, { keyPath: 'id' });
-        }
-        // v1 → v2: carry old `tallies` forward as top-level notches, then drop
-        // the old store. Existing local data is preserved, not wiped.
-        if (db.objectStoreNames.contains(OLD_STORE)) {
-          const src = upgradeTx.objectStore(OLD_STORE);
-          const dest = upgradeTx.objectStore(STORE);
-          src.openCursor().onsuccess = (e) => {
-            const cur = e.target.result;
-            if (cur) {
-              dest.put(upgradeNotch(cur.value));
-              cur.continue();
-            } else {
-              db.deleteObjectStore(OLD_STORE);
-            }
-          };
-        } else if (oldVersion >= 1 && oldVersion < 3) {
-          // v2 → v3: rewrite existing notches in place (note → body,
-          // items → Markdown task list, add comments). Rows already migrated
-          // above (from `tallies`) are skipped — this only runs when there was
-          // no old store to carry forward.
-          const store = upgradeTx.objectStore(STORE);
-          store.openCursor().onsuccess = (e) => {
-            const cur = e.target.result;
-            if (!cur) return;
-            cur.update(upgradeNotch(cur.value));
-            cur.continue();
-          };
-        }
-      };
-      // Another tab holds an older version open, blocking this upgrade. The
-      // request stays pending; show a notice and let it resolve on its own once
-      // the other tab closes — no reload needed. (Without this the promise would
-      // hang forever and the app would never render — you couldn't make notches.)
-      req.onblocked = () => notice(
-        'tally is open in another tab (or an older version). Close the other tab — this page resumes automatically.');
-      req.onsuccess = () => {
-        const db = req.result;
-        // If a newer version opens elsewhere later, yield so we never block it.
-        db.onversionchange = () => {
-          db.close();
-          notice('A newer version of tally opened in another tab. Reload this page to continue.');
-        };
-        resolve(db);
-      };
-      req.onerror = () => reject(req.error || new Error('could not open IndexedDB'));
-    });
-  }
-
-  // notice replaces the whole view with a message — for blocked/errored storage
-  // states, so the screen is never silently blank.
-  function notice(msg) {
-    const v = view();
-    if (v) v.innerHTML = `<p class="lede" style="padding:var(--sp-4)">${esc(msg)}</p>`;
-  }
-
-  // reportWriteError surfaces a failed persist instead of silently dropping it.
-  function reportWriteError(err) {
-    const m = err && err.message ? err.message : String(err);
-    alert('tally could not save to local storage: ' + m);
-  }
-
-  function tx(mode, fn) {
-    return new Promise((resolve, reject) => {
-      const t = _db.transaction(STORE, mode);
-      const store = t.objectStore(STORE);
-      const out = fn(store);
-      t.oncomplete = () => resolve(out && out.result !== undefined ? out.result : out);
-      t.onerror = () => reject(t.error);
-      t.onabort = () => reject(t.error);
-    });
-  }
-
-  const dbAll = () => tx('readonly', (s) => s.getAll());
-  const dbPut = (rec) => tx('readwrite', (s) => s.put(rec));
+  // ---------- storage: demo mode ----------
+  // There is no backing store. `notches` (declared just below) holds every
+  // record for the life of the page; mutations write straight to it and the
+  // "put" is a no-op. On boot we populate it from demoSeed(), and Reset — plus
+  // any reload — returns to exactly that seed. When durable persistence lands,
+  // this is the seam where a real backend (IndexedDB, a server, …) plugs in.
 
   // ---------- state ----------
   let notches = []; // in-memory source of truth, mirrored to IndexedDB
@@ -195,35 +90,68 @@
     return sortByUpdated(notches.filter((x) => !blocked.has(x.id)));
   }
 
-  async function load() {
-    // Normalize in memory too, so any record the upgrade path didn't touch
-    // (e.g. written by an older tab mid-migration) still presents the new shape.
-    notches = (await dbAll()).map(upgradeNotch);
+  // demoSeed builds the starting notches for a demo session — fresh ids and
+  // timestamps each call, so Reset (and every reload) lands on the same shape.
+  // It shows off the core moves: a task list, tags, a comment, and nesting.
+  function demoSeed() {
+    const t = now();
+    const mk = (o) => Object.assign(
+      { id: uid('n_'), title: '', body: '', tags: [], comments: [],
+        parentId: null, status: 'open', createdAt: t, updatedAt: t }, o);
+    return [
+      mk({
+        id: 'n_demo_welcome',
+        title: 'Welcome to tally',
+        body: [
+          "This is a **demo** — everything lives in your browser's memory only.",
+          'Edits stick as you click around, but reloading the page starts fresh.',
+          '',
+          'Try it:',
+          '- [ ] Check off a task by clicking the box',
+          '- [x] (this one is already done)',
+          '- [ ] Open a notch and leave a comment',
+          '',
+          'Use **Reset demo** in the bar above to wipe back to this starting point.',
+        ].join('\n'),
+        tags: [{ name: 'demo', color: 'blue' }],
+        comments: [{ id: 'c_demo_1', body: 'Notches keep a comment thread, like a GitHub issue.', createdAt: t }],
+      }),
+      mk({
+        id: 'n_demo_sub',
+        title: 'A sub-notch',
+        body: 'Notches nest — this one lives under “Welcome to tally”.',
+        parentId: 'n_demo_welcome',
+        updatedAt: t - 1000,
+      }),
+      mk({
+        id: 'n_demo_list',
+        title: 'A quick checklist',
+        body: '- [ ] Milk\n- [ ] Coffee\n- [x] Bread',
+        tags: [{ name: 'errand', color: 'green' }],
+        updatedAt: t - 2000,
+      }),
+    ];
   }
-  async function persist(n) {
+
+  function load() {
+    notches = demoSeed();
+  }
+  // persist records an edit. In demo mode there is nothing to write to — the
+  // record already lives in `notches` by reference — so we just stamp the time
+  // and re-render. Kept async so existing `persist(n).then(...)` callers work.
+  function persist(n) {
     n.updatedAt = now();
-    try {
-      await dbPut(n);
-    } catch (err) {
-      reportWriteError(err);
-      return;
-    }
     ticker();
+    return Promise.resolve();
   }
-  async function createNotch(title, parentId) {
+  function createNotch(title, parentId) {
     const n = {
       id: uid('n_'), title: title.trim(), body: '', tags: [], comments: [],
       parentId: parentId || null, status: 'open', createdAt: now(), updatedAt: now(),
     };
-    try {
-      await dbPut(n); // persist first, then adopt into memory, so the two agree
-    } catch (err) {
-      reportWriteError(err);
-      throw err;
-    }
     notches.push(n);
     ticker();
-    return n;
+    return Promise.resolve(n);
   }
   const notchStatus = (n) => n.status || 'open';
   async function setStatus(n, status) {
@@ -847,16 +775,36 @@
     }
   }
 
+  // ---------- demo bar ----------
+  // A slim banner under the header spelling out that nothing is saved, with a
+  // Reset that drops back to the seed. Injected here (not in the page template)
+  // so it stays wired to this file's demo behaviour.
+  function mountDemoBar() {
+    const anchor = document.getElementById('ticker');
+    if (!anchor || document.querySelector('.demo-bar')) return;
+    const bar = document.createElement('div');
+    bar.className = 'demo-bar';
+    bar.setAttribute('role', 'note');
+    bar.innerHTML =
+      '<span class="demo-bar-msg"><b>Demo</b> nothing is saved — reloading the page wipes your changes.</span>' +
+      '<button class="btn ghost sm" id="demo-reset" type="button">Reset demo</button>';
+    anchor.parentNode.insertBefore(bar, anchor);
+    bar.querySelector('#demo-reset').addEventListener('click', resetDemo);
+  }
+
+  function resetDemo() {
+    if (!confirm('Reset the demo? This clears your changes and restores the starting notches.')) return;
+    notches = demoSeed();
+    ticker();
+    if (location.hash) location.hash = ''; // detail view → list (fires route via hashchange)
+    else route();
+  }
+
   // ---------- boot ----------
-  async function boot() {
-    initTheme(); // independent of IndexedDB — theming works even if the DB can't open
-    try {
-      _db = await openDB();
-      await load();
-    } catch (err) {
-      view().innerHTML = `<p class="lede" style="padding:var(--sp-4)">Couldn't open local storage: ${esc(err && err.message)}. tally needs IndexedDB (private-mode browsers may block it).</p>`;
-      return;
-    }
+  function boot() {
+    initTheme();
+    load();
+    mountDemoBar();
     ticker();
     const mount = view();
     mount.addEventListener('submit', onSubmit);

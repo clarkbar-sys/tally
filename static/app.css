@@ -434,6 +434,29 @@
   .ticker .stat b{ color: var(--ink); font-weight: 600; }
   .ticker .stat .up{ color: var(--good); } .ticker .stat .dn{ color: var(--danger); }
 
+  /* ---------- demo banner ----------
+     tally runs in demo mode: nothing is persisted. This slim, accented bar
+     says so plainly and offers a Reset back to the seed data. */
+  .demo-bar{
+    display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+    margin: var(--sp-3) var(--sp-4) 0;
+    padding: 7px 8px 7px 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+    border-radius: var(--r-sm);
+    background: var(--accent-tint);
+    font-size: 12.5px; color: var(--ink-dim);
+  }
+  .demo-bar-msg{ flex: 1 1 auto; }
+  .demo-bar-msg b{
+    color: var(--accent-strong); font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em; font-size: 10.5px;
+    margin-right: 6px;
+  }
+  .demo-bar #demo-reset{ flex: 0 0 auto; }
+  @media (max-width: 560px){
+    .demo-bar{ margin-left: var(--sp-3); margin-right: var(--sp-3); }
+  }
+
   main{ padding: 0 var(--sp-4); }
   .lede{ color: var(--ink-dim); font-size: 13px; margin: var(--sp-4) 2px var(--sp-2); }
 
