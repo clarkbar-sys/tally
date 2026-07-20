@@ -865,12 +865,30 @@
       </a>`;
   }
 
+  // ---------- intro dismissal ----------
+  // The top-level views (Notches / Tallies / Ledger) show a one-line explainer
+  // under the header — useful the first time, noise after that. Dismissing one
+  // persists per browser, like the theme choice, keyed by view id.
+  const LEDE_KEY = 'tally.dismissedLedes';
+  function dismissedLedes() {
+    try { return new Set(JSON.parse(localStorage.getItem(LEDE_KEY) || '[]')); } catch (e) { return new Set(); }
+  }
+  function dismissLede(id) {
+    const s = dismissedLedes();
+    s.add(id);
+    try { localStorage.setItem(LEDE_KEY, JSON.stringify([...s])); } catch (e) {}
+  }
+  function ledeHTML(id, text) {
+    if (dismissedLedes().has(id)) return '';
+    return `<p class="lede" data-lede-id="${id}">${text}<button type="button" class="lede-x" data-dismiss-lede="${id}" aria-label="Dismiss">&times;</button></p>`;
+  }
+
   // ---------- list view ----------
   const DEFAULT_QUERY = 'is:open';
 
   function renderList() {
     view().innerHTML = `
-      <p class="lede">Your notches — a mark for anything. Make one, then attach notes, checklist items, tags, and sub-notches.</p>
+      ${ledeHTML('notches', 'Your notches — a mark for anything. Make one, then attach notes, checklist items, tags, and sub-notches.')}
       <section class="section">
         <h2><span>Notches</span></h2>
         <div class="section-body stack">
@@ -1568,7 +1586,7 @@
 
   function renderTallyList() {
     view().innerHTML = `
-      <p class="lede">Tallies — proposed changes to your data. Review what a tally would add or close, then merge it to settle the record (or decline it).</p>
+      ${ledeHTML('tallies', 'Tallies — proposed changes to your data. Review what a tally would add or close, then merge it to settle the record (or decline it).')}
       <section class="section">
         <h2><span>Tallies</span></h2>
         <div class="section-body stack">
@@ -1722,7 +1740,7 @@
 
   function renderLedger() {
     const groups = ledgerGroups();
-    const intro = '<p class="lede">Your ledger — every record a merged tally has written into tally’s data substrate. Each entry traces back to the tally that admitted it, so you can always see where your data came from.</p>';
+    const intro = ledeHTML('ledger', 'Your ledger — every record a merged tally has written into tally’s data substrate. Each entry traces back to the tally that admitted it, so you can always see where your data came from.');
     if (!groups.length) {
       view().innerHTML = intro +
         '<section class="section"><h2><span>Ledger</span></h2>' +
@@ -1931,6 +1949,15 @@
 
   function onClick(e) {
     if (e.target.closest('.back')) return; // hash links navigate themselves
+
+    const dismissLedeBtn = e.target.closest('[data-dismiss-lede]');
+    if (dismissLedeBtn) {
+      e.preventDefault();
+      dismissLede(dismissLedeBtn.getAttribute('data-dismiss-lede'));
+      const p = dismissLedeBtn.closest('.lede');
+      if (p) p.remove();
+      return;
+    }
 
     const menuTrigger = e.target.closest('[data-menu-trigger]');
     if (menuTrigger) { e.preventDefault(); toggleMenu(menuTrigger); return; }
