@@ -466,7 +466,16 @@
   }
 
   main{ padding: 0 var(--sp-4); }
-  .lede{ color: var(--ink-dim); font-size: 13px; margin: var(--sp-4) 2px var(--sp-2); }
+  .lede{
+    display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3);
+    color: var(--ink-dim); font-size: 13px; margin: var(--sp-4) 2px var(--sp-2);
+  }
+  .lede-x{
+    flex: 0 0 auto; appearance: none; border: none; background: none; cursor: pointer;
+    color: var(--ink-faint); font-size: 16px; line-height: 1; padding: 2px 4px; margin: -2px -4px 0 0;
+    border-radius: 4px;
+  }
+  .lede-x:hover{ color: var(--ink-dim); background: var(--bg-raised-2); }
 
   /* ---------- sections ---------- */
   /* No section-level overflow:hidden: a menu-pop (labels, status, sub-notches)
@@ -606,8 +615,6 @@
   .marks{ display: flex; flex-wrap: wrap; gap: var(--sp-4) var(--sp-5); align-items: flex-end; }
   .mark-cell{ display: flex; flex-direction: column; gap: 6px; align-items: center; color: var(--accent); filter: drop-shadow(0 0 4px var(--accent-glow)); }
   .mark-cell .n{ font-size: 10px; color: var(--ink-faint); }
-
-  footer.foot{ text-align: center; color: var(--ink-faint); font-size: 11px; letter-spacing: .04em; padding: var(--sp-5) var(--sp-4) 0; }
 
   /* ---------- local-first app ---------- */
   main#view{ display: block; }
