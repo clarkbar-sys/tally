@@ -47,11 +47,19 @@
      theme switcher can select it by name.
 
      To add a theme: copy this whole block, change the selector to
-     [data-theme="your-name"], set color-scheme (dark|light), and refill
+     html[data-theme="your-name"], set color-scheme (dark|light), and refill
      every slot. Set colours nowhere else — components read only tokens.
      For a calm/flat theme, dial the FX budget toward 0/none.
+
+     Selectors are `html[data-theme="…"]`, not a bare `[data-theme="…"]`, on
+     purpose: `:root` (which carries the Paper default below) matches the html
+     element unconditionally at the same specificity as a lone attribute
+     selector, so a bare `[data-theme]` block placed before the Paper `:root`
+     rule loses to it and the theme silently doesn't apply. The `html` type
+     prefix adds the extra specificity that lets a selected theme win from any
+     position in the file. Keep it on every theme.
      ================================================================== */
-  [data-theme="amber-crt"]{
+  html[data-theme="amber-crt"]{
     color-scheme: dark;
 
     /* Surfaces — page, raised panel, deepest inset */
@@ -117,7 +125,7 @@
      dark): cool slate greys, one restrained blue accent, and the whole FX
      budget switched off so nothing glows or scans. Fills the same contract
      as Amber CRT — no component rules change. */
-  [data-theme="slate"]{
+  html[data-theme="slate"]{
     color-scheme: dark;
 
     /* Surfaces — page, raised panel, deepest inset */
@@ -178,7 +186,7 @@
      darkens (--lab-ink dark) so both read on paper. Carried by `:root` as
      tally's default. */
   :root,
-  [data-theme="paper"]{
+  html[data-theme="paper"]{
     color-scheme: light;
 
     /* Surfaces — page, raised leaf, deeper inset */
@@ -241,7 +249,7 @@
      The much-loved retro palette (morhetz/gruvbox): warm charcoal surfaces,
      soft cream fg, a signature yellow accent, and the palette's own bright
      ramp for tag hues. Flat, with a whisper of grain for warmth. */
-  [data-theme="gruvbox"]{
+  html[data-theme="gruvbox"]{
     color-scheme: dark;
 
     /* Surfaces — bg0 → bg1 */
