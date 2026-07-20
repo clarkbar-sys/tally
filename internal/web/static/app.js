@@ -507,10 +507,10 @@
   // description editor shows (Write vs Preview). Keyed by notch id so opening a
   // different notch resets it — a fresh/empty body opens in Write, an existing
   // one in Preview (rendered), the way GitHub shows a saved issue body.
-  let detailUI = { id: null, bodyTab: 'preview', subsCollapsed: false };
+  let detailUI = { id: null, bodyTab: 'preview', subsCollapsed: true };
   function ensureDetailUI(n) {
     if (detailUI.id !== n.id) {
-      detailUI = { id: n.id, bodyTab: (n.body || '').trim() ? 'preview' : 'write', subsCollapsed: false };
+      detailUI = { id: n.id, bodyTab: (n.body || '').trim() ? 'preview' : 'write', subsCollapsed: true };
     }
     return detailUI;
   }
@@ -711,6 +711,30 @@
       '<button class="btn ghost sm" type="submit">Add</button></form></div></div></div>';
   }
 
+  // A sub-notch row condenses cardHTML's title/tags/meta into one table line —
+  // sub-notches are a roll-up, not a second notch list, so each one only needs
+  // to be scannable at a glance, not laid out like its own card.
+  function subRowHTML(n) {
+    const s = taskStats(n);
+    const kids = childrenOf(n.id).length;
+    const comments = liveComments(n).length;
+    const bits = [];
+    if (kids) bits.push(`${kids} sub-notch${kids === 1 ? '' : 'es'}`);
+    if (s.total) bits.push(`${s.done}/${s.total} task${s.total === 1 ? '' : 's'}`);
+    if (comments) bits.push(`${comments} comment${comments === 1 ? '' : 's'}`);
+    const meta = bits.length ? bits.join(' · ') : '—';
+    const tags = statusLab(n) + n.tags.map((g) => `<span class="lab ${esc(g.color)}">${esc(g.name)}</span>`).join('');
+    return `
+      <tr>
+        <td class="subs-title">
+          <a href="#/n/${esc(n.id)}">${n.title ? esc(n.title) : '<span class="untitled">untitled</span>'}</a>
+          ${tags ? `<span class="subs-tags">${tags}</span>` : ''}
+        </td>
+        <td class="subs-meta">${meta}</td>
+        <td class="subs-updated">${fmtDate(n.updatedAt)}</td>
+      </tr>`;
+  }
+
   // Sub-notches now live at the foot of the notch box as a collapsible roll-up
   // (the header toggles it) with an Add popover that either creates a new child or
   // links an existing notch under this one.
@@ -718,7 +742,7 @@
     const kids = childrenOf(n.id);
     const collapsed = ensureDetailUI(n).subsCollapsed;
     const list = kids.length
-      ? `<div class="notch-list">${kids.map(cardHTML).join('')}</div>`
+      ? `<div class="notch-list"><table class="subs-table"><tbody>${kids.map(subRowHTML).join('')}</tbody></table></div>`
       : '<span class="swatch-note">No sub-notches yet.</span>';
     const links = linkTargets(n);
     const linkForm = links.length
