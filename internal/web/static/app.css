@@ -965,6 +965,85 @@
   .back:hover{ text-decoration: underline; }
   .crumb-sep{ color: var(--ink-faint); opacity: .7; }
 
+  /* ---------- tallies (issue→PR sibling of notches) ----------
+     A tally is a reviewable proposal: a typed diff of data changes plus the
+     notches it closes on merge. It reuses the notch chrome wholesale (cards,
+     timeline, composer, menus) and adds only the pieces below: the top-level
+     nav, the merged "settled" hue, the diff, the linked-notches list, and the
+     merge/decline action bar. */
+
+  /* top-level view switch (Notches / Tallies), a slim pill row under the ticker */
+  .viewnav{ display: flex; gap: 4px; margin: var(--sp-3) var(--sp-4) 0; }
+  .viewnav a{
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+    border-radius: 999px; text-decoration: none; color: var(--ink-dim);
+    font-size: 13px; font-weight: 600; letter-spacing: .01em;
+    border: 1px solid transparent; transition: background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .viewnav a:hover{ color: var(--ink); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .viewnav a[aria-current="page"]{ color: var(--ink); background: var(--bg-raised); border-color: var(--line-strong); }
+  .viewnav a:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* "merged" is a settled state — a theme-woven violet (pink×blue), distinct
+     from a notch's green "done". */
+  .state.merged{ background: color-mix(in srgb, var(--lab-pink) 58%, var(--lab-blue)); }
+  .lab.merged{ --lc: color-mix(in srgb, var(--lab-pink) 58%, var(--lab-blue)); }
+  .ev.merged .icon{
+    background: color-mix(in srgb, var(--lab-pink) 15%, var(--bg-raised));
+    border-color: color-mix(in srgb, var(--lab-pink) 45%, var(--line));
+    color: color-mix(in srgb, var(--lab-pink) 60%, var(--lab-blue));
+  }
+  .parent-chip .pdot.merged{ background: color-mix(in srgb, var(--lab-pink) 58%, var(--lab-blue)); }
+  .parent-chip .pdot.declined{ background: var(--ink-dim); }
+  .card-by{ font-size: 12px; color: var(--ink-faint); }
+  .tally-title-static{ font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+  .tally-title-static .untitled{ color: var(--ink-faint); font-style: italic; }
+
+  /* the diff — a tally's typed changes as +added lines */
+  .diff-block, .linked-block{ display: flex; flex-direction: column; gap: 8px; }
+  .diff-title{ font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); display: flex; align-items: center; gap: 8px; }
+  .diff-title .count{ color: var(--ink); }
+  .diff{ display: flex; flex-direction: column; gap: 8px; }
+  .diff-change{ border: 1px solid var(--line-strong); border-radius: var(--r-sm); overflow: hidden; background: var(--bg); }
+  .diff-change.applied{ opacity: .82; }
+  .diff-head{ display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; background: var(--bg-raised-2); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-dim); }
+  .diff-op{ font-weight: 600; color: var(--ink); }
+  .diff-applied{ font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--good); }
+  .diff-head .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .6; font-size: 14px; line-height: 1; padding: 0 2px; }
+  .diff-head .x:hover{ opacity: 1; color: var(--danger); }
+  .diff-lines{ padding: 6px 10px; background: color-mix(in srgb, var(--good) 6%, transparent); }
+  .diff-line{ display: flex; gap: 8px; padding: 2px 0; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5; color: var(--ink); word-break: break-word; }
+  .diff-mark{ color: var(--good); font-weight: 700; flex: 0 0 auto; }
+
+  /* the add-change form */
+  .change-form{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+  .change-form .select{ flex: 0 0 auto; width: auto; }
+  .change-form .input{ flex: 1 1 11rem; width: auto; }
+  .change-form .btn{ flex: 0 0 auto; }
+
+  /* linked notches (what the tally closes on merge) */
+  .linked-list{ display: flex; flex-direction: column; gap: 6px; }
+  .linked-row{ display: flex; align-items: center; gap: 8px; }
+  .linked-row .x{ border: none; background: none; color: var(--ink-dim); cursor: pointer; opacity: .6; font-size: 15px; line-height: 1; padding: 0 2px; flex: 0 0 auto; }
+  .linked-row .x:hover{ opacity: 1; color: var(--danger); }
+
+  /* merge / decline action bar */
+  .tally-actions{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: var(--sp-3); }
+  .tally-actions-note{ flex: 1 1 100%; }
+  .btn.merge{ background: var(--good); color: #08150d; border-color: var(--good); box-shadow: 0 0 16px -8px color-mix(in srgb, var(--good) 60%, transparent); }
+  .btn.merge:hover{ filter: brightness(1.06); }
+  .btn.merge svg{ width: 16px; height: 16px; }
+  .tally-outcome{ display: inline-flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: var(--sp-3); font-size: 13px; font-weight: 600; color: var(--ink-dim); }
+  .tally-outcome svg{ width: 16px; height: 16px; }
+  .tally-outcome.merged{ color: color-mix(in srgb, var(--lab-pink) 60%, var(--lab-blue)); }
+  .tally-outcome .btn{ margin-left: 6px; }
+
+  /* on a notch: the tallies that link it */
+  .notch-tallies{ display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; padding-top: 2px; }
+  .nt-label{ display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-dim); min-height: 26px; }
+  .nt-label svg{ width: 14px; height: 14px; color: var(--ink-faint); }
+  .nt-chips{ display: flex; flex-wrap: wrap; gap: 6px; }
+
   /* ---------- mobile ----------
      The layout is a single narrow column already, so the phone pass is mostly
      making the header breathe and keeping every control reachable. Nothing here
@@ -972,6 +1051,7 @@
   @media (max-width: 480px){
     main{ padding: 0 var(--sp-3); }
     .ticker{ margin-left: var(--sp-3); margin-right: var(--sp-3); }
+    .viewnav{ margin-left: var(--sp-3); margin-right: var(--sp-3); }
     .topbar{ padding: var(--sp-3) var(--sp-3) var(--sp-3); gap: var(--sp-2); }
     .brand{ font-size: 20px; }
     /* Give the tap targets a comfortable minimum on touch. */
