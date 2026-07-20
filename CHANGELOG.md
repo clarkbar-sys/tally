@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.2.0...tally-v0.3.0) (2026-07-20)
+
+
+### Features
+
+* run the app in in-memory demo mode (no IndexedDB) ([#72](https://github.com/clarkbar-sys/tally/issues/72)) ([a8e7332](https://github.com/clarkbar-sys/tally/commit/a8e733201006529c4054716b90c861588c243f88))
+* **web:** add a theme switcher ([#65](https://github.com/clarkbar-sys/tally/issues/65)) ([dce468a](https://github.com/clarkbar-sys/tally/commit/dce468ac5f19f0638bb5224304c2febd75b20ecc))
+* **web:** add the Paper and Gruvbox themes ([#66](https://github.com/clarkbar-sys/tally/issues/66)) ([c0c9788](https://github.com/clarkbar-sys/tally/commit/c0c97888b5925a0d01c71c7ad7994c02a2390164))
+* **web:** add the Slate theme (calm dark) ([#62](https://github.com/clarkbar-sys/tally/issues/62)) ([37d7e71](https://github.com/clarkbar-sys/tally/commit/37d7e71fbaf8900e439acb0b73b1bea318b17079))
+* **web:** cleaner, mobile-first UI with Paper as the default theme ([#68](https://github.com/clarkbar-sys/tally/issues/68)) ([d01a317](https://github.com/clarkbar-sys/tally/commit/d01a31702aa98c29c0daaaaa931d71e3689010cc))
+* **web:** make the notch detail an append-only event log ([#74](https://github.com/clarkbar-sys/tally/issues/74)) ([6db3991](https://github.com/clarkbar-sys/tally/commit/6db3991b452c66014d5d58ccdb77917d7ced20aa))
+* **web:** redesign notch detail as a GitHub-issue-style editor ([#71](https://github.com/clarkbar-sys/tally/issues/71)) ([8378455](https://github.com/clarkbar-sys/tally/commit/8378455cde697270344c5ff916c4a56a51af4bd9))
+
 ## [0.2.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.1.0...tally-v0.2.0) (2026-07-19)
 
 
