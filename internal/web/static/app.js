@@ -328,14 +328,26 @@
         ],
         createdAt: t - 9000, updatedAt: t - 8000, mergedAt: t - 8000,
       },
+      {
+        id: 't_demo_scrape', title: 'Clip 2 files from a web scrape', author: 'Web clip',
+        status: 'open',
+        body: 'A scraper proposing **binary** data — an image and a note. Merge to write them into the ledger as blobs (viewable there); decline to drop them. Same review gate, now for files.',
+        changes: [{ op: 'add-blob', dataset: 'webclip.files', blobs: [
+          { name: 'diagram.svg', mime: 'image/svg+xml', size: 512, dataUrl: DEMO_PHOTO },
+          { name: 'notes.txt', mime: 'text/plain', size: 132, dataUrl: DEMO_NOTE },
+        ] }],
+        linkedNotches: [],
+        events: [{ id: uid('e_'), kind: 'opened', at: t - 5000, author: 'Web clip' }],
+        createdAt: t - 5000, updatedAt: t - 5000, mergedAt: null,
+      },
     ];
   }
 
   function demoRecords() {
     const t = now();
     return [
-      { id: uid('r_'), dataset: 'pantry.items', summary: 'Olive oil ×1', source: 'you', at: t - 8000, talliedFrom: 't_demo_done' },
-      { id: uid('r_'), dataset: 'pantry.items', summary: 'Basmati rice ×2', source: 'you', at: t - 8000, talliedFrom: 't_demo_done' },
+      { id: uid('r_'), dataset: 'pantry.items', kind: 'text', summary: 'Olive oil ×1', source: 'you', at: t - 8000, talliedFrom: 't_demo_done' },
+      { id: uid('r_'), dataset: 'pantry.items', kind: 'text', summary: 'Basmati rice ×2', source: 'you', at: t - 8000, talliedFrom: 't_demo_done' },
     ];
   }
 
@@ -503,6 +515,26 @@
     await persistTally(t);
   }
 
+  // addBlobChange reads the picked files into one add-blob change on the tally —
+  // the binary counterpart of add-records. Oversized files are skipped (their
+  // bytes would just sit in memory) and reported back. In demo the bytes ride as
+  // a data: URL; a real substrate stores them in an object store on merge.
+  async function addBlobChange(t, dataset, files) {
+    if (tallyStatus(t) !== 'open') return [];
+    const skipped = [];
+    const blobs = [];
+    for (const file of files) {
+      if (!file) continue;
+      if (file.size > MAX_ATTACH_BYTES) { skipped.push(file.name || 'file'); continue; }
+      try {
+        const dataUrl = await readFileDataURL(file);
+        blobs.push({ name: file.name || 'file', mime: file.type || 'application/octet-stream', size: file.size, dataUrl });
+      } catch (e) { skipped.push(file.name || 'file'); }
+    }
+    if (blobs.length) { t.changes.push({ op: 'add-blob', dataset, blobs }); await persistTally(t); }
+    return skipped;
+  }
+
   async function linkNotch(t, notchId) {
     if (tallyStatus(t) !== 'open') return;
     const n = byId(notchId);
@@ -542,7 +574,21 @@
     } else if (ch.op === 'add-records') {
       const at = now();
       for (const row of ch.rows || []) {
-        records.push({ id: uid('r_'), dataset: ch.dataset, summary: row.summary, source: t.author, at, talliedFrom: t.id });
+        records.push({ id: uid('r_'), dataset: ch.dataset, kind: 'text', summary: row.summary, source: t.author, at, talliedFrom: t.id });
+      }
+    } else if (ch.op === 'add-blob') {
+      // Binary lands as a blob record. In demo the bytes ride along as a data:
+      // URL (blobUrl) exactly like a notch attachment; a real substrate would
+      // store the bytes in an object store and keep only a ref here — blobUrl is
+      // that seam. The record still carries name/mime/size so the ledger can
+      // preview or offer it for download without touching the bytes.
+      const at = now();
+      for (const blob of ch.blobs || []) {
+        records.push({
+          id: uid('r_'), dataset: ch.dataset, kind: 'blob',
+          name: blob.name, mime: blob.mime, size: blob.size, blobUrl: blob.dataUrl,
+          source: t.author, at, talliedFrom: t.id,
+        });
       }
     }
     ch.applied = true;
@@ -1343,11 +1389,13 @@
   function changeLabel(ch) {
     if (ch.op === 'add-notch') return 'new notch';
     if (ch.op === 'add-records') return `${(ch.rows || []).length} record${(ch.rows || []).length === 1 ? '' : 's'} → ${ch.dataset || 'data'}`;
+    if (ch.op === 'add-blob') return `${(ch.blobs || []).length} file${(ch.blobs || []).length === 1 ? '' : 's'} → ${ch.dataset || 'files'}`;
     return ch.op;
   }
   function changeLines(ch) {
     if (ch.op === 'add-notch') return [ch.title || 'untitled'];
     if (ch.op === 'add-records') return (ch.rows || []).map((r) => r.summary);
+    if (ch.op === 'add-blob') return (ch.blobs || []).map((b) => `${b.name || 'file'} · ${fmtBytes(b.size)}`);
     return [];
   }
   function changesBlock(t) {
@@ -1370,8 +1418,14 @@
         '<option value="add-notch">Add a notch</option>' +
         '<option value="add-records">Add a data record</option></select>' +
         '<input class="input" id="change-text" type="text" placeholder="notch title, or record summary…"/>' +
-        '<input class="input" id="change-dataset" type="text" placeholder="dataset for records, e.g. spotify.plays"/>' +
-        `<button class="btn ghost sm" type="submit">${ICON.plus}<span>Add change</span></button></form>`
+        '<input class="input" id="change-dataset" type="text" placeholder="dataset, e.g. spotify.plays or webclip.files"/>' +
+        `<button class="btn ghost sm" type="submit">${ICON.plus}<span>Add change</span></button>` +
+        // Binary: a file picker adds an add-blob change straight away (its bytes
+        // ride in memory like a notch attachment). The dataset field above names
+        // the target; blank defaults to "files".
+        '<input id="change-file" class="visually-hidden" type="file" multiple aria-hidden="true" tabindex="-1"/>' +
+        `<button class="btn ghost sm" id="add-blob-btn" type="button">${ICON.clip}<span>Attach file</span></button>` +
+        '</form>'
       : '';
     return '<div class="diff-block">' +
       `<div class="diff-title">Changes${t.changes.length ? ` <span class="count num">${t.changes.length}</span>` : ''}</div>` +
@@ -1630,18 +1684,40 @@
     }));
   }
 
-  // One ledger row: its summary, plus a provenance line linking back to the tally
-  // that wrote it. A record whose source tally has been reset away still shows its
-  // source and time — the provenance text just isn't a link.
+  // One ledger row: its content (a text summary, or a binary blob preview), plus
+  // a provenance line linking back to the tally that wrote it. A record whose
+  // source tally has been reset away still shows its source and time — the
+  // provenance text just isn't a link.
   function ledgerRowHTML(r) {
     const t = r.talliedFrom ? tallyById(r.talliedFrom) : null;
     const from = t
       ? `from <a class="ev-link" href="#/t/${esc(t.id)}">${esc(t.title.trim() || 'untitled tally')}</a>`
       : (r.talliedFrom ? 'from a tally' : 'seeded');
     const source = r.source && r.source !== 'you' ? ` · ${esc(r.source)}` : '';
-    return '<div class="ledger-row">' +
-      `<div class="ledger-main">${esc(r.summary || '')}</div>` +
-      `<div class="ledger-meta">${from}${source} · ${fmtDate(r.at)}</div></div>`;
+    const meta = `<div class="ledger-meta">${from}${source} · ${fmtDate(r.at)}</div>`;
+    if (r.kind === 'blob') return '<div class="ledger-row">' + ledgerBlobMain(r) + meta + '</div>';
+    return '<div class="ledger-row">' + `<div class="ledger-main">${esc(r.summary || '')}</div>` + meta + '</div>';
+  }
+
+  // A blob record's content: an image previews inline (click → lightbox) with a
+  // download link; anything else is a download chip. Mirrors a notch attachment,
+  // proving the substrate carries real binary, not just text.
+  function ledgerBlobMain(r) {
+    const name = r.name || 'file';
+    if (isImageMime(r.mime)) {
+      return '<div class="ledger-blob">' +
+        `<button type="button" class="attach-figure" data-ledger-view="${esc(r.id)}" aria-label="View ${esc(name)} full size">` +
+        `<img src="${esc(r.blobUrl)}" alt="${esc(name)}" loading="lazy"/></button>` +
+        '<div class="ledger-blob-meta">' +
+        `<span class="attach-name">${esc(name)}</span>` +
+        `<span class="attach-size">${fmtBytes(r.size)}</span>` +
+        `<a class="attach-dl" href="${esc(r.blobUrl)}" download="${esc(name)}">${ICON.download}<span>Download</span></a>` +
+        '</div></div>';
+    }
+    return `<a class="attach-file" href="${esc(r.blobUrl)}" download="${esc(name)}">` +
+      `<span class="attach-ico">${ICON.file}</span>` +
+      `<span class="attach-file-txt"><span class="attach-name">${esc(name)}</span>` +
+      `<span class="attach-size">${fmtBytes(r.size)} · download</span></span>${ICON.download}</a>`;
   }
 
   function renderLedger() {
@@ -1906,6 +1982,23 @@
       createTally('').then((t) => { location.hash = '#/t/' + t.id; }).catch(() => {});
       return;
     }
+    // The "Attach file" button proxies a click to the change-form's hidden file
+    // input; onChange turns the picked files into an add-blob change.
+    if (e.target.closest('#add-blob-btn')) {
+      e.preventDefault();
+      const input = document.getElementById('change-file');
+      if (input) input.click();
+      return;
+    }
+    // A ledger image preview opens full-size in the lightbox — looked up by id so
+    // the (large) data URL never rides in a DOM attribute.
+    const ledView = e.target.closest('[data-ledger-view]');
+    if (ledView) {
+      e.preventDefault();
+      const r = records.find((x) => x.id === ledView.getAttribute('data-ledger-view'));
+      if (r) openLightbox(r.blobUrl, r.name);
+      return;
+    }
     const tfbtn = e.target.closest('.filter button[data-tstatus]');
     if (tfbtn) {
       e.preventDefault();
@@ -2080,6 +2173,24 @@
       if (!files.length) return;
       addAttachments(n, files).then((skipped) => {
         renderDetail(n);
+        if (skipped && skipped.length) {
+          alert(`Too large to attach in this demo (max ${fmtBytes(MAX_ATTACH_BYTES)}):\n${skipped.join('\n')}`);
+        }
+      });
+      return;
+    }
+    // Picking files in the change-form's hidden input adds an add-blob change to
+    // the current tally (its bytes ride in memory as a data: URL, like a notch
+    // attachment). The dataset field names the target; blank defaults to "files".
+    if (e.target.id === 'change-file') {
+      const t = currentTally(); if (!t) return;
+      const files = Array.from(e.target.files || []);
+      e.target.value = '';
+      if (!files.length) return;
+      const ds = (document.getElementById('change-dataset') || {}).value;
+      const dataset = (ds || '').trim() || 'files';
+      addBlobChange(t, dataset, files).then((skipped) => {
+        renderTallyDetail(t);
         if (skipped && skipped.length) {
           alert(`Too large to attach in this demo (max ${fmtBytes(MAX_ATTACH_BYTES)}):\n${skipped.join('\n')}`);
         }
