@@ -787,7 +787,7 @@
       `<span class="stat"><b>${tags.size}</b> tags</span>` +
       `<span class="stat"><b>${files}</b> file${files === 1 ? '' : 's'}</span>` +
       `<span class="stat"><b>${openTallies}</b> open ${openTallies === 1 ? 'tally' : 'tallies'}</span>` +
-      `<span class="stat"><b>${records.length}</b> record${records.length === 1 ? '' : 's'}</span>`;
+      `<span class="stat"><a class="stat-link" href="#/ledger"><b>${records.length}</b> in ledger</a></span>`;
   }
 
   // ---------- cards ----------
@@ -1609,6 +1609,58 @@
       </section>`;
   }
 
+  // ---------- ledger view ----------
+  // The ledger is the read-only face of the data substrate: every record a
+  // merged tally has written, grouped by dataset. Each row carries its provenance
+  // — which tally admitted it (`talliedFrom`) and when — so nothing in your data
+  // is anonymous: you can always trace a record back to the proposal you merged.
+  // Records only ever arrive through a merged tally, so this view is read-only.
+
+  // Records grouped by dataset name, datasets sorted alphabetically and rows
+  // newest-first within each.
+  function ledgerGroups() {
+    const by = new Map();
+    for (const r of records) {
+      if (!by.has(r.dataset)) by.set(r.dataset, []);
+      by.get(r.dataset).push(r);
+    }
+    return [...by.keys()].sort().map((dataset) => ({
+      dataset,
+      rows: by.get(dataset).slice().sort((a, b) => b.at - a.at),
+    }));
+  }
+
+  // One ledger row: its summary, plus a provenance line linking back to the tally
+  // that wrote it. A record whose source tally has been reset away still shows its
+  // source and time — the provenance text just isn't a link.
+  function ledgerRowHTML(r) {
+    const t = r.talliedFrom ? tallyById(r.talliedFrom) : null;
+    const from = t
+      ? `from <a class="ev-link" href="#/t/${esc(t.id)}">${esc(t.title.trim() || 'untitled tally')}</a>`
+      : (r.talliedFrom ? 'from a tally' : 'seeded');
+    const source = r.source && r.source !== 'you' ? ` · ${esc(r.source)}` : '';
+    return '<div class="ledger-row">' +
+      `<div class="ledger-main">${esc(r.summary || '')}</div>` +
+      `<div class="ledger-meta">${from}${source} · ${fmtDate(r.at)}</div></div>`;
+  }
+
+  function renderLedger() {
+    const groups = ledgerGroups();
+    const intro = '<p class="lede">Your ledger — every record a merged tally has written into tally’s data substrate. Each entry traces back to the tally that admitted it, so you can always see where your data came from.</p>';
+    if (!groups.length) {
+      view().innerHTML = intro +
+        '<section class="section"><h2><span>Ledger</span></h2>' +
+        '<div class="section-body"><p class="swatch-note">Your ledger is empty — merge a tally that adds records and they’ll appear here, grouped by dataset.</p></div></section>';
+      return;
+    }
+    const sections = groups.map((g) =>
+      '<section class="section">' +
+      `<h2><span>${esc(g.dataset)}</span><span class="count num">${g.rows.length}</span></h2>` +
+      `<div class="section-body"><div class="notch-list ledger-list">${g.rows.map(ledgerRowHTML).join('')}</div></div>` +
+      '</section>').join('');
+    view().innerHTML = intro + sections;
+  }
+
   // ---------- lightbox ----------
   // A bare-bones full-screen image viewer for attachment previews: one overlay
   // appended to <body>, dismissed by clicking anywhere or pressing Escape. No
@@ -1644,6 +1696,7 @@
       return;
     }
     if (location.hash === '#/t' || location.hash === '#/t/') { renderTallyList(); setNav(); return; }
+    if (location.hash === '#/ledger' || location.hash === '#/ledger/') { renderLedger(); setNav(); return; }
     const m = location.hash.match(/^#\/n\/(.+)$/);
     if (m) {
       const n = byId(m[1]);
@@ -1655,14 +1708,21 @@
     setNav();
   }
 
-  // setNav marks the active top-level view (Notches vs Tallies) in the injected
-  // nav. A notch/tally detail counts as being in that section.
+  // navSection maps the current hash to its top-level view — a notch/tally detail
+  // counts as being in that section.
+  function navSection() {
+    if (/^#\/ledger(\/|$)/.test(location.hash)) return 'ledger';
+    if (/^#\/t(\/|$)/.test(location.hash)) return 'tallies';
+    return 'notches';
+  }
+  // setNav marks the active top-level view (Notches / Tallies / Ledger) in the
+  // injected nav.
   function setNav() {
     const nav = document.getElementById('viewnav');
     if (!nav) return;
-    const onTallies = /^#\/t(\/|$)/.test(location.hash);
+    const section = navSection();
     nav.querySelectorAll('a[data-nav]').forEach((a) => {
-      const active = a.getAttribute('data-nav') === (onTallies ? 'tallies' : 'notches');
+      const active = a.getAttribute('data-nav') === section;
       a.setAttribute('aria-current', active ? 'page' : 'false');
     });
   }
@@ -2188,10 +2248,10 @@
   }
 
   // ---------- top-level nav ----------
-  // Two top-level views, Notches and Tallies, as a slim tab row under the status
-  // line. Injected here (not the page shell) so the whole tally feature stays in
-  // this file — no server-side template change — mirroring the demo bar. route()
-  // keeps the active tab in step via setNav().
+  // Three top-level views — Notches, Tallies and the Ledger — as a slim tab row
+  // under the status line. Injected here (not the page shell) so the whole
+  // feature stays in this file — no server-side template change — mirroring the
+  // demo bar. route() keeps the active tab in step via setNav().
   function mountNav() {
     const anchor = document.getElementById('ticker');
     if (!anchor || document.getElementById('viewnav')) return;
@@ -2201,7 +2261,8 @@
     nav.setAttribute('aria-label', 'Views');
     nav.innerHTML =
       '<a href="#/" data-nav="notches">Notches</a>' +
-      '<a href="#/t" data-nav="tallies">Tallies</a>';
+      '<a href="#/t" data-nav="tallies">Tallies</a>' +
+      '<a href="#/ledger" data-nav="ledger">Ledger</a>';
     anchor.parentNode.insertBefore(nav, anchor.nextSibling);
     setNav();
   }
