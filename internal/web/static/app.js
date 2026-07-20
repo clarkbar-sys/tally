@@ -110,6 +110,11 @@
   //           createdAt, updatedAt, mergedAt }
   //   Change ∈ { op:'add-notch', title, body, tags:[name] }
   //          | { op:'add-records', dataset, rows:[{summary}] }
+  //          | { op:'add-blob', dataset, blobs:[{name,mime,size,dataUrl}] }
+  //          | { op:'comment', notchId, body }        // modify: append a comment
+  //          | { op:'set-status', notchId, status }   // modify: open/done/not_planned
+  //          | { op:'add-label', notchId, name }       // modify: tag the notch
+  //          | { op:'check-task', notchId, index, text } // modify: tick a task
   //   Record { id, dataset, summary, source, at, talliedFrom }
   let tallies = []; // proposals — parallel to `notches`
   let records = []; // the applied data substrate (SQLite/IndexedDB stand-in)
@@ -340,6 +345,13 @@
         scopes: ['notches:read', 'notches:propose'],
         action: { label: 'Propose a roundup', verb: 'roundup' },
         status: 'active', installedAt: t - 50000,
+      },
+      {
+        id: 'coach-demo', name: 'Coach (demo)', kind: 'local', color: 'pink',
+        blurb: 'A local helper that modifies notches. It finds an open task, then proposes to check it off and leave an encouraging comment — the "apps modify issues" path, still gated by your merge. No ledger access.',
+        scopes: ['notches:read', 'notches:propose'],
+        action: { label: 'Nudge my tasks', verb: 'coach-nudge' },
+        status: 'active', installedAt: t - 45000,
       },
     ];
   }
@@ -573,10 +585,11 @@
   }
 
   // addChange appends one typed change to an open tally's diff. The op vocabulary
-  // is deliberately tiny (add-notch, add-records) — it's the contract every future
-  // provider and the eventual SQLite migration targets, so it stays small on
-  // purpose. A change on a merged/declined tally is refused: the diff is frozen
-  // once the tally leaves the open state.
+  // is small and typed — create ops (add-notch, add-records, add-blob) and modify
+  // ops (comment, set-status, add-label, check-task) — the contract every future
+  // provider and the eventual SQLite migration targets. A change on a
+  // merged/declined tally is refused: the diff is frozen once the tally leaves
+  // the open state.
   async function addChange(t, change) {
     if (tallyStatus(t) !== 'open') return;
     t.changes.push(change);
@@ -620,12 +633,23 @@
     await persistTally(t);
   }
 
-  // applyChange migrates one change into the substrate. add-notch creates a new
-  // notch (data entering the system as an annotatable container); add-records
-  // writes rows into `records`, each stamped talliedFrom so its provenance — which
-  // tally admitted it — is never lost. It marks the change `applied` so the diff
-  // can show it landed. This is the single seam a real backend replaces.
-  function applyChange(t, ch) {
+  // The change ops split in two families. The *create* ops (add-notch,
+  // add-records, add-blob) bring new data into the system. The *modify* ops
+  // (comment, set-status, add-label, check-task) act on an existing notch by id
+  // — this is how an app "modifies an issue": still only as a proposal you merge,
+  // never a direct write. A modify op targets `notchId`; applyChange stamps the
+  // resulting event with `by` (the author's name) so the notch's own timeline
+  // shows who did it, and mergeTally adds one provenance line per touched notch.
+  const CREATE_OPS = new Set(['add-notch', 'add-records', 'add-blob']);
+  const isModifyOp = (op) => !CREATE_OPS.has(op);
+
+  // applyChange migrates one change into the substrate. Create ops write new
+  // data (a notch, ledger rows, a blob); modify ops append to an existing notch's
+  // timeline, collecting the touched notch id into `touched` so mergeTally can
+  // stamp provenance. Every change is marked `applied` so the diff shows it
+  // landed. This is the single seam a real backend replaces.
+  function applyChange(t, ch, touched) {
+    const by = tallyAuthorName(t);
     if (ch.op === 'add-notch') {
       const t0 = now();
       const tags = (ch.tags || []).map((name) => ensureLabel(name).name);
@@ -641,7 +665,7 @@
       ch.appliedNotchId = n.id;
     } else if (ch.op === 'add-records') {
       const at = now();
-      const src = tallyAuthorName(t);
+      const src = by;
       for (const row of ch.rows || []) {
         records.push({ id: uid('r_'), dataset: ch.dataset, kind: 'text', summary: row.summary, source: src, appId: t.appId, at, talliedFrom: t.id });
       }
@@ -652,13 +676,44 @@
       // that seam. The record still carries name/mime/size so the ledger can
       // preview or offer it for download without touching the bytes.
       const at = now();
-      const src = tallyAuthorName(t);
+      const src = by;
       for (const blob of ch.blobs || []) {
         records.push({
           id: uid('r_'), dataset: ch.dataset, kind: 'blob',
           name: blob.name, mime: blob.mime, size: blob.size, blobUrl: blob.dataUrl,
           source: src, appId: t.appId, at, talliedFrom: t.id,
         });
+      }
+    } else if (isModifyOp(ch.op)) {
+      // Modify ops target an existing notch. Each appends the same event kind the
+      // notch already understands (comment / status / labeled / task), stamped
+      // `by` so the timeline attributes it to the app, not "you".
+      const n = byId(ch.notchId);
+      if (n) {
+        if (ch.op === 'comment') {
+          const body = (ch.body || '').trim();
+          if (body) logEvent(n, 'comment', { body, by });
+        } else if (ch.op === 'set-status') {
+          const status = ch.status === 'done' || ch.status === 'not_planned' ? ch.status : 'open';
+          if (notchStatus(n) !== status) { n.status = status; logEvent(n, 'status', { status, by }); }
+        } else if (ch.op === 'add-label') {
+          const label = ensureLabel(ch.name || '');
+          if (label.name && !n.tags.some((x) => x.toLowerCase() === label.name.toLowerCase())) {
+            n.tags.push(label.name);
+            logEvent(n, 'labeled', { name: label.name, by });
+          }
+        } else if (ch.op === 'check-task') {
+          // Flip the task at ch.index to done, if it isn't already. The index is
+          // computed against the body the proposal was written from; merge is
+          // immediate in demo, so it stays in step.
+          const info = taskInfo(n.body, ch.index);
+          if (info && !info.done) {
+            n.body = toggleTask(n.body, ch.index);
+            logEvent(n, 'task', { index: ch.index, text: info.text, done: true, by });
+          }
+        }
+        n.updatedAt = now();
+        if (touched) touched.add(n.id);
       }
     }
     ch.applied = true;
@@ -672,7 +727,8 @@
   // tally — that's the consent gate.
   async function mergeTally(t) {
     if (tallyStatus(t) !== 'open') return;
-    for (const ch of t.changes) applyChange(t, ch);
+    const touched = new Set();
+    for (const ch of t.changes) applyChange(t, ch, touched);
     let closed = 0;
     for (const id of t.linkedNotches) {
       const n = byId(id);
@@ -681,6 +737,16 @@
       logEvent(n, 'tally', { tallyId: t.id, title: t.title, action: 'merged' });
       n.updatedAt = now();
       closed++;
+    }
+    // Provenance for notches a modify op touched (but didn't close): a single
+    // "modified by tally X" line so the notch's timeline points back here, the
+    // same way a closed notch does.
+    for (const id of touched) {
+      if (t.linkedNotches.includes(id)) continue;
+      const n = byId(id);
+      if (!n) continue;
+      logEvent(n, 'tally', { tallyId: t.id, title: t.title, action: 'modified' });
+      n.updatedAt = now();
     }
     t.status = 'merged';
     t.mergedAt = now();
@@ -780,6 +846,18 @@
     }
     return a.slice(0, Math.min(n, a.length));
   }
+  // The first unchecked task in a notch body, as {index, text} in the same task
+  // ordering mdRender/toggleTask use — what the Coach demo proposes to tick.
+  function firstOpenTask(n) {
+    let idx = 0;
+    for (const line of String(n.body || '').split('\n')) {
+      const m = TASK_RE.exec(line);
+      if (!m) continue;
+      if (m[2].toLowerCase() !== 'x') return { index: idx, text: m[5].trim() };
+      idx++;
+    }
+    return null;
+  }
 
   // runAppAction is the demo's "does something" hook: the app's button fires
   // here, it authors a real tally, and we drop the user straight onto it to
@@ -811,6 +889,29 @@
         title: `Roundup — ${open.length} open notch${open.length === 1 ? '' : 'es'}`, body,
         changes: [{ op: 'add-notch', title: `Roundup — ${fmtDate(now()).slice(0, 10)}`, body, tags: ['roundup'] }],
       });
+    } else if (app.action.verb === 'coach-nudge') {
+      // Modify ops: read your notches, find an open task, and propose to check it
+      // off plus leave an encouraging note — the "apps modify issues" path, still
+      // gated by merge. Falls back to just a note when there's nothing to tick.
+      let target = null, task = null;
+      for (const n of sortByUpdated(notches)) {
+        if (notchStatus(n) !== 'open') continue;
+        const ot = firstOpenTask(n);
+        if (ot) { target = n; task = ot; break; }
+      }
+      const changes = [];
+      let body;
+      if (target && task) {
+        changes.push({ op: 'check-task', notchId: target.id, index: task.index, text: task.text });
+        changes.push({ op: 'comment', notchId: target.id, body: `Ticked **${task.text}** off for you — nice progress. 🎉` });
+        body = `Proposing to check one task off **${target.title.trim() || 'a notch'}** and leave a note. Merge to apply the changes to that notch; decline to leave it be.`;
+      } else {
+        target = sortByUpdated(notches).find((n) => notchStatus(n) === 'open') || notches[0];
+        if (!target) return;
+        changes.push({ op: 'comment', notchId: target.id, body: 'You’re all caught up on tasks here — want to line up the next one?' });
+        body = `No open tasks to tick, so just proposing an encouraging note on **${target.title.trim() || 'a notch'}**.`;
+      }
+      t = appOpenTally(app, { title: 'A nudge for your tasks', body, changes });
     }
     if (t) location.hash = '#/t/' + t.id;
   }
@@ -1253,7 +1354,7 @@
     }
     return '<div class="ev card">' +
       `<span class="icon">${ICON.comment}</span>` +
-      '<div class="box"><div class="box-head"><span><b>you</b> commented</span>' +
+      `<div class="box"><div class="box-head"><span><b>${esc(ev.by || 'you')}</b> commented</span>` +
       `<span class="row" style="gap:8px;align-items:center"><span class="when">${when}</span>` +
       `<button class="x" type="button" ${delAttr || 'data-del-comment'}="${esc(ev.id)}" aria-label="delete comment">&times;</button></span></div>` +
       `<div class="box-body md-body">${mdRender(ev.body)}</div></div></div>`;
@@ -1304,10 +1405,10 @@
     switch (ev.kind) {
       case 'comment': return commentEventHTML(ev);
       case 'attachment': return attachmentEventHTML(ev);
-      case 'labeled': return evSmall('accent', ICON.tag, `added the ${labChip(ev.name)} label`, ev.at);
-      case 'unlabeled': return evSmall('', ICON.untag, `removed the ${labChip(ev.name)} label`, ev.at);
+      case 'labeled': return evSmall('accent', ICON.tag, `added the ${labChip(ev.name)} label`, ev.at, ev.by);
+      case 'unlabeled': return evSmall('', ICON.untag, `removed the ${labChip(ev.name)} label`, ev.at, ev.by);
       case 'task': return evSmall(ev.done ? 'good' : '', ev.done ? ICON.check : ICON.box,
-        `${ev.done ? 'checked off' : 'unchecked'} <b>${esc(ev.text || 'a task')}</b>`, ev.at);
+        `${ev.done ? 'checked off' : 'unchecked'} <b>${esc(ev.text || 'a task')}</b>`, ev.at, ev.by);
       case 'moved': {
         const to = ev.toId ? byId(ev.toId) : null;
         const label = ev.toId
@@ -1323,14 +1424,14 @@
       case 'renamed': return evSmall('', ICON.pencil, `renamed this to <b>${esc(ev.to || 'untitled')}</b>`, ev.at);
       case 'tally': {
         const link = `<a href="#/t/${esc(ev.tallyId)}" class="ev-link">${esc(ev.title || 'a tally')}</a>`;
-        return ev.action === 'created'
-          ? evSystem('accent', ICON.merge, `added by tally ${link}`, ev.at)
-          : evSystem('merged', ICON.merge, `closed by tally ${link}`, ev.at);
+        if (ev.action === 'created') return evSystem('accent', ICON.merge, `added by tally ${link}`, ev.at);
+        if (ev.action === 'modified') return evSystem('accent', ICON.merge, `modified by tally ${link}`, ev.at);
+        return evSystem('merged', ICON.merge, `closed by tally ${link}`, ev.at);
       }
       case 'status': {
-        if (ev.status === 'done') return evSmall('good', ICON.done, 'closed this notch as <b>done</b>', ev.at);
-        if (ev.status === 'not_planned') return evSmall('', ICON.skip, 'closed this notch as <b>not planned</b>', ev.at);
-        return evSmall('accent', ICON.reopen, 'reopened this notch', ev.at);
+        if (ev.status === 'done') return evSmall('good', ICON.done, 'closed this notch as <b>done</b>', ev.at, ev.by);
+        if (ev.status === 'not_planned') return evSmall('', ICON.skip, 'closed this notch as <b>not planned</b>', ev.at, ev.by);
+        return evSmall('accent', ICON.reopen, 'reopened this notch', ev.at, ev.by);
       }
       default: return '';
     }
@@ -1592,16 +1693,30 @@
   }
 
   // ----- the diff: a tally's typed changes, rendered as +added lines -----
+  // A modify op names its target notch so the diff reads "comment → <notch>".
+  const STATUS_LABEL = { open: 'open', done: 'done', not_planned: 'not planned' };
+  function chTargetTitle(ch) {
+    const n = ch.notchId ? byId(ch.notchId) : null;
+    return (n && n.title.trim()) || 'a notch';
+  }
   function changeLabel(ch) {
     if (ch.op === 'add-notch') return 'new notch';
     if (ch.op === 'add-records') return `${(ch.rows || []).length} record${(ch.rows || []).length === 1 ? '' : 's'} → ${ch.dataset || 'data'}`;
     if (ch.op === 'add-blob') return `${(ch.blobs || []).length} file${(ch.blobs || []).length === 1 ? '' : 's'} → ${ch.dataset || 'files'}`;
+    if (ch.op === 'comment') return `comment → ${chTargetTitle(ch)}`;
+    if (ch.op === 'set-status') return `set status → ${chTargetTitle(ch)}`;
+    if (ch.op === 'add-label') return `label → ${chTargetTitle(ch)}`;
+    if (ch.op === 'check-task') return `check task → ${chTargetTitle(ch)}`;
     return ch.op;
   }
   function changeLines(ch) {
     if (ch.op === 'add-notch') return [ch.title || 'untitled'];
     if (ch.op === 'add-records') return (ch.rows || []).map((r) => r.summary);
     if (ch.op === 'add-blob') return (ch.blobs || []).map((b) => `${b.name || 'file'} · ${fmtBytes(b.size)}`);
+    if (ch.op === 'comment') return [ch.body || ''];
+    if (ch.op === 'set-status') return [STATUS_LABEL[ch.status] || ch.status || 'open'];
+    if (ch.op === 'add-label') return [ch.name || ''];
+    if (ch.op === 'check-task') return [ch.text || `task #${(ch.index || 0) + 1}`];
     return [];
   }
   function changesBlock(t) {
@@ -1618,11 +1733,26 @@
             `<div class="diff-lines">${lines}</div></div>`;
         }).join('')
       : '<span class="swatch-note">No data changes — this tally only closes its linked notches.</span>';
+    // The target-notch picker for modify ops (comment / set-status / add-label).
+    // syncChangeForm() shows only the controls the selected op needs.
+    const notchOpts = sortByUpdated(notches)
+      .map((n) => `<option value="${esc(n.id)}">${esc(pathLabel(n))}</option>`).join('');
     const form = open
       ? '<form class="change-form" id="change-form" autocomplete="off">' +
         '<select class="select" id="change-op" aria-label="Change type">' +
+        '<optgroup label="Create">' +
         '<option value="add-notch">Add a notch</option>' +
-        '<option value="add-records">Add a data record</option></select>' +
+        '<option value="add-records">Add a data record</option>' +
+        '</optgroup>' +
+        '<optgroup label="Modify a notch">' +
+        '<option value="comment">Comment on a notch</option>' +
+        '<option value="set-status">Set a notch’s status</option>' +
+        '<option value="add-label">Label a notch</option>' +
+        '</optgroup></select>' +
+        `<select class="select" id="change-target" aria-label="Target notch" hidden>${notchOpts}</select>` +
+        '<select class="select" id="change-status" aria-label="New status" hidden>' +
+        '<option value="open">open</option><option value="done">done</option>' +
+        '<option value="not_planned">not planned</option></select>' +
         '<input class="input" id="change-text" type="text" placeholder="notch title, or record summary…"/>' +
         '<input class="input" id="change-dataset" type="text" placeholder="dataset, e.g. spotify.plays or webclip.files"/>' +
         `<button class="btn ghost sm" type="submit">${ICON.plus}<span>Add change</span></button>` +
@@ -1636,6 +1766,30 @@
     return '<div class="diff-block">' +
       `<div class="diff-title">Changes${t.changes.length ? ` <span class="count num">${t.changes.length}</span>` : ''}</div>` +
       `<div class="diff">${rows}</div>${form}</div>`;
+  }
+
+  // syncChangeForm shows only the inputs the selected change op needs: a target
+  // notch + status for set-status, a target + text for comment/add-label, a
+  // dataset for add-records, and so on. Called on render and whenever the op
+  // select changes, so the one form serves every op without a re-render.
+  function syncChangeForm() {
+    const opEl = document.getElementById('change-op');
+    if (!opEl) return;
+    const op = opEl.value;
+    const modify = isModifyOp(op);
+    const show = (id, on) => { const el = document.getElementById(id); if (el) el.hidden = !on; };
+    show('change-target', modify);
+    show('change-status', op === 'set-status');
+    show('change-dataset', op === 'add-records');
+    show('change-text', op !== 'set-status');
+    show('add-blob-btn', !modify);
+    const text = document.getElementById('change-text');
+    if (text) {
+      text.placeholder = op === 'add-notch' ? 'notch title…'
+        : op === 'add-records' ? 'record summary…'
+        : op === 'comment' ? 'comment (Markdown supported)…'
+        : op === 'add-label' ? 'label name…' : '';
+    }
   }
 
   // ----- linked notches: what the tally closes on merge -----
@@ -1868,6 +2022,8 @@
           </form>
         </div>
       </section>`;
+
+    syncChangeForm();
   }
 
   // ---------- ledger view ----------
@@ -2167,14 +2323,28 @@
       const t = currentTally(); if (!t) return;
       const op = (document.getElementById('change-op') || {}).value;
       const text = (document.getElementById('change-text') || {}).value.trim();
-      if (!text) return;
+      const target = (document.getElementById('change-target') || {}).value;
       let change = null;
       if (op === 'add-notch') {
+        if (!text) return;
         change = { op: 'add-notch', title: text, body: '', tags: [] };
       } else if (op === 'add-records') {
+        if (!text) return;
         const dataset = (document.getElementById('change-dataset') || {}).value.trim();
         if (!dataset) { alert('A data record needs a dataset name (e.g. spotify.plays).'); return; }
         change = { op: 'add-records', dataset, rows: [{ summary: text }] };
+      } else if (op === 'comment') {
+        if (!target) { alert('Pick a notch to comment on.'); return; }
+        if (!text) return;
+        change = { op: 'comment', notchId: target, body: text };
+      } else if (op === 'set-status') {
+        if (!target) { alert('Pick a notch.'); return; }
+        const status = (document.getElementById('change-status') || {}).value || 'open';
+        change = { op: 'set-status', notchId: target, status };
+      } else if (op === 'add-label') {
+        if (!target) { alert('Pick a notch.'); return; }
+        if (!text) return;
+        change = { op: 'add-label', notchId: target, name: text };
       }
       if (change) addChange(t, change).then(() => renderTallyDetail(t));
       return;
@@ -2477,6 +2647,8 @@
   }
 
   function onChange(e) {
+    // Switching the change op re-reveals just the inputs that op needs.
+    if (e.target.id === 'change-op') { syncChangeForm(); return; }
     // A label's color pickers write straight to the global registry — the
     // change is visible on every notch that carries this label, not just the
     // one whose popover is open, so this doesn't persist() any single notch.
