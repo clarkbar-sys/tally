@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.3.0...tally-v0.4.0) (2026-07-20)
+
+
+### Features
+
+* **web:** attach files and photos to notches ([#77](https://github.com/clarkbar-sys/tally/issues/77)) ([bd1a089](https://github.com/clarkbar-sys/tally/commit/bd1a089cf20d6e736025e189eec50207ec76d0b3))
+
+
+### Bug Fixes
+
+* **web:** make theme selector actually switch themes ([#79](https://github.com/clarkbar-sys/tally/issues/79)) ([ef46916](https://github.com/clarkbar-sys/tally/commit/ef4691679795a428cb0249d01a298f704bd83ce6))
+
 ## [0.3.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.2.0...tally-v0.3.0) (2026-07-20)
 
 
