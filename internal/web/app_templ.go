@@ -55,7 +55,7 @@ func AppPage() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</span></div></header><div class=\"ticker\" id=\"ticker\" role=\"status\" aria-label=\"status\"><span class=\"stat\"><b>0</b> open</span></div><main id=\"view\" aria-live=\"polite\"></main><noscript><p class=\"lede\" style=\"padding:var(--sp-4)\">tally is a local-first app — it needs JavaScript enabled to run. Your data stays in this browser.</p></noscript><footer class=\"foot\">tally — local-first · data stays in your browser</footer></div></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</span></div></header><div class=\"ticker\" id=\"ticker\" role=\"status\" aria-label=\"status\"><span class=\"stat\"><b>0</b> open</span></div><main id=\"view\" aria-live=\"polite\"></main><noscript><p class=\"lede\" style=\"padding:var(--sp-4)\">tally is a local-first app — it needs JavaScript enabled to run. Your data stays in this browser.</p></noscript></div></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

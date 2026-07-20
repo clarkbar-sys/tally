@@ -616,8 +616,6 @@
   .mark-cell{ display: flex; flex-direction: column; gap: 6px; align-items: center; color: var(--accent); filter: drop-shadow(0 0 4px var(--accent-glow)); }
   .mark-cell .n{ font-size: 10px; color: var(--ink-faint); }
 
-  footer.foot{ text-align: center; color: var(--ink-faint); font-size: 11px; letter-spacing: .04em; padding: var(--sp-5) var(--sp-4) 0; }
-
   /* ---------- local-first app ---------- */
   main#view{ display: block; }
 
