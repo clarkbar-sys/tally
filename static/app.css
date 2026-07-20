@@ -469,13 +469,24 @@
   .lede{ color: var(--ink-dim); font-size: 13px; margin: var(--sp-4) 2px var(--sp-2); }
 
   /* ---------- sections ---------- */
-  .section{ margin-top: var(--sp-4); border: 1px solid var(--line-strong); border-radius: var(--r); overflow: hidden; background: var(--bg-raised); }
+  /* No section-level overflow:hidden: a menu-pop (labels, status, sub-notches)
+     is an absolutely-positioned child that's meant to float over whatever's
+     below it, and an ancestor clip would cut it off once it grows taller than
+     the remaining box below its trigger (as the labels popover's "All labels"
+     list can). The header's flush top corners get their own radius instead of
+     leaning on the section to clip them. */
+  .section{ position: relative; margin-top: var(--sp-4); border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg-raised); }
+  /* Promotes a section above its later siblings while one of its popovers is
+     open — see the closeMenuEl/openMenuEl note in app.js for why this needs
+     to be explicit rather than the popover's own z-index alone. */
+  .section.pop-elevated{ z-index: 5; }
   .section > h2{
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     background: var(--bg-raised-2);
     color: var(--ink-dim);
     padding: 10px 14px; font-size: 12.5px; font-weight: 600; letter-spacing: .01em;
     border-bottom: 1px solid var(--line);
+    border-top-left-radius: calc(var(--r) - 1px); border-top-right-radius: calc(var(--r) - 1px);
   }
   .section > h2 > span:first-child{ color: var(--ink-dim); }
   .section-body{ padding: var(--sp-4); background: var(--bg-raised); display: flex; flex-direction: column; gap: var(--sp-4); }
@@ -792,6 +803,15 @@
   .lab-color::-webkit-color-swatch{ border: none; border-radius: 4px; }
   .lab-color::-moz-color-swatch{ border: none; border-radius: 4px; }
   .lab-color:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* "All labels" — every label in the system not yet on this notch, click to
+     add. A row of unwrapped chip buttons rather than the remove-button rows
+     above, since these are add affordances, not managed entries. */
+  .menu-suggestions{ flex-direction: row; flex-wrap: wrap; max-height: 132px; overflow-y: auto; }
+  .menu-suggest{ border: 0; background: none; padding: 0; cursor: pointer; border-radius: 999px; }
+  .menu-suggest .lab{ pointer-events: none; }
+  .menu-suggest:hover .lab{ filter: brightness(1.1); }
+  .menu-suggest:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
 
   /* ---------- sub-notches roll-up (foot of the notch box) ----------
      Sub-notches moved out of their own section into a collapsible roll-up under
