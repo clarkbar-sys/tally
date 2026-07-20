@@ -28,11 +28,13 @@ templ GalleryPage() {
 					<span class="version" title="running build"><span class="dot" aria-hidden="true"></span>{ versionString() }</span>
 				</header>
 				<div class="ticker" role="status" aria-label="status">
-					<span class="stat"><b>12</b> notches</span>
-					<span class="stat"><b class="up">7</b> done</span>
-					<span class="stat"><b>5</b> open</span>
-					<span class="stat"><b class="dn">2</b> due</span>
-					<span class="stat"><b>9d</b> streak</span>
+					<div class="stats-body">
+						<span class="stat"><b>12</b> notches</span>
+						<span class="stat"><b class="up">7</b> done</span>
+						<span class="stat"><b>5</b> open</span>
+						<span class="stat"><b class="dn">2</b> due</span>
+						<span class="stat"><b>9d</b> streak</span>
+					</div>
 				</div>
 				<main>
 					<p class="lede">Theme + widget sandbox. No data yet — styling lives in <code>static/app.css</code>.</p>
