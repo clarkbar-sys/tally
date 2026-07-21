@@ -35,7 +35,9 @@ func TestRootRendersAppShell(t *testing.T) {
 	}
 	body := rec.Body.String()
 	// The shell carries the version, mounts the client app, and loads app.js.
-	for _, want := range []string{versionString(), `id="view"`, "static/app.js", "local-first"} {
+	// Served pages run the live build (data-mode="live"), so app.js persists to
+	// IndexedDB rather than running in demo mode.
+	for _, want := range []string{versionString(), `id="view"`, "static/app.js", "local-first", `data-mode="live"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("app shell missing %q", want)
 		}
@@ -84,6 +86,11 @@ func TestExportWritesSelfContainedSite(t *testing.T) {
 	}
 	if !strings.Contains(string(index), versionString()) {
 		t.Fatal("exported index.html missing version")
+	}
+	// The static export is the demo build (data-mode="demo"): no server backs
+	// it, so app.js must run in memory-only demo mode, not try to persist.
+	if !strings.Contains(string(index), `data-mode="demo"`) {
+		t.Fatal("exported index.html should render the demo build (data-mode=\"demo\")")
 	}
 	for _, asset := range []string{"app.css", "app.js"} {
 		if _, err := os.Stat(filepath.Join(dir, "static", asset)); err != nil {

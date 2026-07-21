@@ -85,12 +85,24 @@
 (() => {
   'use strict';
 
-  // ---------- storage: demo mode ----------
-  // There is no backing store. `notches` (declared just below) holds every
-  // record for the life of the page; mutations write straight to it and the
-  // "put" is a no-op. On boot we populate it from demoSeed(), and Reset — plus
-  // any reload — returns to exactly that seed. When durable persistence lands,
-  // this is the seam where a real backend (IndexedDB, a server, …) plugs in.
+  // ---------- storage: two modes, one seam ----------
+  // The in-memory arrays declared just below (`notches`, `labels`, …) are always
+  // the one source of truth: every mutation writes straight to them. What differs
+  // between the two builds that share this file is whether those arrays outlive
+  // the page.
+  //
+  //   demo  — the static export behind GitHub Pages / PR previews. Nothing is
+  //           written anywhere; boot seeds from demoSeed() and any reload (or the
+  //           Reset button) returns to exactly that seed. Perfect for a throwaway
+  //           preview where you want the same starting point every time.
+  //   live  — the build tally serves on the tailnet. After each edit the whole
+  //           state is mirrored to the browser's IndexedDB (see saveState), and
+  //           boot rehydrates it (see load), so your notches survive a reload.
+  //
+  // The server picks the mode via the <html data-mode> attribute (see
+  // internal/web/app.templ). We read it once here and default to demo when it is
+  // absent, so a stale or cached page never silently starts persisting.
+  const DEMO = (document.documentElement.dataset.mode || 'demo') !== 'live';
 
   // ---------- state ----------
   let notches = []; // in-memory source of truth, mirrored to IndexedDB
@@ -134,6 +146,92 @@
   const now = () => Date.now();
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const byId = (id) => notches.find((n) => n.id === id);
+
+  // ---------- durable store (live mode) ----------
+  // In live mode the whole app state is a single IndexedDB record. We keep the
+  // in-memory arrays as the source of truth exactly as in demo mode and, after
+  // each edit, mirror a snapshot of them into that one record; boot reads it back.
+  // A snapshot (not a row-per-notch schema) keeps the seam tiny — persistence is
+  // a background copy of state that already lives in memory, so none of the CRUD
+  // code below has to change. All of it is inert in demo mode (DEMO short-circuits
+  // saveState/scheduleSave), so the static export never touches browser storage.
+  const DB_NAME = 'tally';
+  const DB_VERSION = 1;
+  const STORE = 'state';
+  const STATE_KEY = 'current';
+  const SNAPSHOT_VERSION = 1;
+
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      let req;
+      try { req = indexedDB.open(DB_NAME, DB_VERSION); }
+      catch (e) { reject(e); return; }
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('indexedDB open failed'));
+    });
+  }
+
+  // snapshot is the durable shape: a version tag plus each state array. Kept flat
+  // so a future migration can read `v` and adapt older records in place.
+  function snapshot() {
+    return { v: SNAPSHOT_VERSION, labels, apps, notches, tallies, records };
+  }
+
+  // saveState writes the current snapshot over the single state record. Best
+  // effort: a storage failure (quota, private-mode block) is logged, never fatal —
+  // the in-memory copy keeps working, you just lose durability for that edit.
+  async function saveState() {
+    if (DEMO) return;
+    let db;
+    try {
+      db = await idbOpen();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('write failed'));
+        tx.onabort = () => reject(tx.error || new Error('write aborted'));
+        tx.objectStore(STORE).put(snapshot(), STATE_KEY);
+      });
+    } catch (e) {
+      console.warn('tally: could not save state', e);
+    } finally {
+      if (db) db.close();
+    }
+  }
+
+  // loadState reads the stored snapshot, or null on first run / any read error.
+  async function loadState() {
+    let db;
+    try {
+      db = await idbOpen();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const rq = tx.objectStore(STORE).get(STATE_KEY);
+        rq.onsuccess = () => resolve(rq.result || null);
+        rq.onerror = () => reject(rq.error || new Error('read failed'));
+      });
+    } finally {
+      if (db) db.close();
+    }
+  }
+
+  // scheduleSave coalesces the bursts of persist() calls a single action fires
+  // (a merge touches several notches and a tally) into one debounced write.
+  let saveTimer = null;
+  function scheduleSave() {
+    if (DEMO) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveState, 200);
+  }
+  // A pending debounced write would be lost if the tab closes first, so flush it
+  // when the page is hidden — the last reliable moment before unload.
+  if (!DEMO && typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => { clearTimeout(saveTimer); saveState(); });
+  }
 
   const PALETTE = ['red', 'amber', 'green', 'blue', 'pink', 'cyan'];
 
@@ -316,15 +414,23 @@
   // Scopes are the "refine what an app can do" seam — a connected provider gets
   // records:propose (it may propose ledger rows); the local Roundup helper gets
   // only notches:read + notches:propose, so it can never touch the substrate.
+  // youApp is the built-in `you` actor — the author of every tally you open by
+  // hand, full scope, never revocable. It's the one app that must exist in both
+  // modes (live mode seeds a fresh install with just this), so it lives on its
+  // own here and demoApps() lists it first.
+  function youApp() {
+    return {
+      id: 'you', name: 'You', kind: 'you', color: 'blue',
+      blurb: 'That’s you — the built-in author of every tally you open by hand. Full access; can’t be revoked.',
+      scopes: ['notches:read', 'notches:propose', 'records:read', 'records:propose'],
+      action: null, status: 'active', installedAt: now() - 90000,
+    };
+  }
+
   function demoApps() {
     const t = now();
     return [
-      {
-        id: 'you', name: 'You', kind: 'you', color: 'blue',
-        blurb: 'That’s you — the built-in author of every tally you open by hand. Full access; can’t be revoked.',
-        scopes: ['notches:read', 'notches:propose', 'records:read', 'records:propose'],
-        action: null, status: 'active', installedAt: t - 90000,
-      },
+      youApp(),
       {
         id: 'spotify-demo', name: 'Spotify (demo)', kind: 'connected', color: 'green',
         blurb: 'A connected music provider. Simulate a sync and it proposes your recent plays as ledger records — accept what you want, decline the rest.',
@@ -430,12 +536,39 @@
     ];
   }
 
-  function load() {
+  // seedDemo fills the state arrays with the demo fixtures — the shared starting
+  // point for demo mode (every boot and Reset) and the Reset action.
+  function seedDemo() {
     labels = demoLabels();
     apps = demoApps();
     notches = demoSeed();
     tallies = demoTallies();
     records = demoRecords();
+  }
+
+  // load populates the state arrays for this session. In demo mode that's always
+  // the fixtures. In live mode it's whatever IndexedDB holds; a first run (or an
+  // unreadable store) starts from a clean, real install — no demo fixtures, just
+  // the built-in `you` actor — and persists it so the next reload restores it.
+  async function load() {
+    if (DEMO) { seedDemo(); return; }
+    let saved = null;
+    try { saved = await loadState(); }
+    catch (e) { console.warn('tally: could not load saved state, starting fresh', e); }
+    if (saved && Array.isArray(saved.notches)) {
+      labels = saved.labels || [];
+      apps = (saved.apps && saved.apps.length) ? saved.apps : [youApp()];
+      notches = saved.notches;
+      tallies = saved.tallies || [];
+      records = saved.records || [];
+    } else {
+      labels = [];
+      apps = [youApp()];
+      notches = [];
+      tallies = [];
+      records = [];
+      await saveState();
+    }
   }
   // persist records an edit. In demo mode there is nothing to write to — the
   // record already lives in `notches` by reference — so we just stamp the time
@@ -1108,6 +1241,10 @@
   // roll-up pattern below: a toggle button plus a body the toggle shows/hides.
   let statsCollapsed = true;
   function ticker() {
+    // Every mutation refreshes the status line, so this is also the one place
+    // that catches "state changed" for persistence — schedule a debounced save
+    // here (a no-op in demo mode) and no individual CRUD path has to remember to.
+    scheduleSave();
     const el = document.getElementById('ticker');
     if (!el) return;
     let done = 0, total = 0, files = 0;
@@ -2885,8 +3022,10 @@
   // ---------- demo bar ----------
   // A slim banner under the header spelling out that nothing is saved, with a
   // Reset that drops back to the seed. Injected here (not in the page template)
-  // so it stays wired to this file's demo behaviour.
+  // so it stays wired to this file's demo behaviour. Live mode persists, so there
+  // is nothing to warn about and the bar stays off.
   function mountDemoBar() {
+    if (DEMO === false) return;
     const anchor = document.getElementById('ticker');
     if (!anchor || document.querySelector('.demo-bar')) return;
     const bar = document.createElement('div');
@@ -2901,11 +3040,7 @@
 
   function resetDemo() {
     if (!confirm('Reset the demo? This clears your changes and restores the starting notches.')) return;
-    labels = demoLabels();
-    apps = demoApps();
-    notches = demoSeed();
-    tallies = demoTallies();
-    records = demoRecords();
+    seedDemo();
     ticker();
     if (location.hash) location.hash = ''; // detail view → list (fires route via hashchange)
     else route();
@@ -2933,9 +3068,13 @@
   }
 
   // ---------- boot ----------
-  function boot() {
+  // load() is async in live mode (it reads IndexedDB), so boot awaits it before
+  // the first render — otherwise the shell would paint empty and the saved
+  // notches would pop in a frame later. Theme init and the chrome that doesn't
+  // depend on state run first so the page never looks blank while the store opens.
+  async function boot() {
     initTheme();
-    load();
+    await load();
     mountDemoBar();
     mountNav();
     ticker();
