@@ -22,17 +22,18 @@ func (s *Store) UpsertNotch(ctx context.Context, n model.Notch) (model.Notch, er
 
 	row := s.db.QueryRowContext(ctx, `
 		INSERT INTO notches (
-			id, title, body, tags, parent_id, status, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+			id, title, body, tags, parent_id, status, due_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 		ON CONFLICT (id) DO UPDATE SET
 			title      = excluded.title,
 			body       = excluded.body,
 			tags       = excluded.tags,
 			parent_id  = excluded.parent_id,
 			status     = excluded.status,
+			due_at     = excluded.due_at,
 			updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 		RETURNING created_at, updated_at`,
-		n.ID, n.Title, n.Body, tags, nullString(n.ParentID), string(n.Status),
+		n.ID, n.Title, n.Body, tags, nullString(n.ParentID), string(n.Status), formatNullTime(n.DueAt),
 	)
 
 	var createdAt, updatedAt string
@@ -51,7 +52,7 @@ func (s *Store) UpsertNotch(ctx context.Context, n model.Notch) (model.Notch, er
 // GetNotch returns the notch with the given ID.
 func (s *Store) GetNotch(ctx context.Context, id string) (model.Notch, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, title, body, tags, parent_id, status, created_at, updated_at
+		SELECT id, title, body, tags, parent_id, status, due_at, created_at, updated_at
 		FROM notches WHERE id = ?`, id)
 	return scanNotch(row)
 }
@@ -59,7 +60,7 @@ func (s *Store) GetNotch(ctx context.Context, id string) (model.Notch, error) {
 // ListNotches returns every notch, most recently updated first.
 func (s *Store) ListNotches(ctx context.Context) ([]model.Notch, error) {
 	return s.queryNotches(ctx, `
-		SELECT id, title, body, tags, parent_id, status, created_at, updated_at
+		SELECT id, title, body, tags, parent_id, status, due_at, created_at, updated_at
 		FROM notches ORDER BY updated_at DESC, id`)
 }
 
@@ -67,7 +68,7 @@ func (s *Store) ListNotches(ctx context.Context) ([]model.Notch, error) {
 // updated first.
 func (s *Store) ListChildNotches(ctx context.Context, parentID string) ([]model.Notch, error) {
 	return s.queryNotches(ctx, `
-		SELECT id, title, body, tags, parent_id, status, created_at, updated_at
+		SELECT id, title, body, tags, parent_id, status, due_at, created_at, updated_at
 		FROM notches WHERE parent_id = ? ORDER BY updated_at DESC, id`, parentID)
 }
 
@@ -105,9 +106,9 @@ func (s *Store) queryNotches(ctx context.Context, query string, args ...any) ([]
 func scanNotch(row rowScanner) (model.Notch, error) {
 	var n model.Notch
 	var tags, status, createdAt, updatedAt string
-	var parentID sql.NullString
+	var parentID, dueAt sql.NullString
 	if err := row.Scan(
-		&n.ID, &n.Title, &n.Body, &tags, &parentID, &status, &createdAt, &updatedAt,
+		&n.ID, &n.Title, &n.Body, &tags, &parentID, &status, &dueAt, &createdAt, &updatedAt,
 	); err != nil {
 		return model.Notch{}, fmt.Errorf("store: scan notch: %w", err)
 	}
@@ -117,6 +118,9 @@ func scanNotch(row rowScanner) (model.Notch, error) {
 	var err error
 	if n.Tags, err = unmarshalStrings(tags); err != nil {
 		return model.Notch{}, fmt.Errorf("store: scan notch: decode tags: %w", err)
+	}
+	if n.DueAt, err = parseNullTime(dueAt); err != nil {
+		return model.Notch{}, fmt.Errorf("store: scan notch: parse due_at: %w", err)
 	}
 	if n.CreatedAt, err = parseTime(createdAt); err != nil {
 		return model.Notch{}, fmt.Errorf("store: scan notch: parse created_at: %w", err)

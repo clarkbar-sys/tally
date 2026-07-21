@@ -43,9 +43,16 @@
 //   Notch { id, title, body, tags:[name],
 //           events:[Event],
 //           parentId:string|null, status:'open'|'done'|'not_planned',
-//           createdAt, updatedAt }
+//           dueAt:number|null, createdAt, updatedAt }
 //   Event { id, kind, at, ...payload }   kind ∈ opened | comment | labeled |
-//           unlabeled | task | moved | sub | renamed | status | attachment
+//           unlabeled | task | moved | sub | renamed | status | due | attachment
+//
+// DUE DATES: a notch carries an optional `dueAt` — a timestamp (ms) pinned to
+// local midnight of the chosen day, since a due date is a day, not a moment.
+// null means no due date. Setting, changing or clearing it appends a `due`
+// event, mirroring labeled/unlabeled, so the timeline stays complete. The list
+// surfaces it as a colour-coded badge (later / soon / overdue) and the search
+// grows two tokens, `is:due` and `is:overdue` (see parseQuery + dueState).
 //
 // LABELS: labels are a second array (`labels`), global across the whole app —
 // not owned by any one notch. A notch's `tags` is just a list of label names;
@@ -354,7 +361,7 @@
     const t = now();
     const mk = (o) => Object.assign(
       { id: uid('n_'), title: '', body: '', tags: [], events: [],
-        parentId: null, status: 'open', createdAt: t, updatedAt: t }, o);
+        parentId: null, status: 'open', dueAt: null, createdAt: t, updatedAt: t }, o);
     return [
       mk({
         id: 'n_demo_welcome',
@@ -396,11 +403,17 @@
         title: 'A quick checklist',
         body: '- [ ] Milk\n- [ ] Coffee\n- [x] Bread',
         tags: ['errand'],
-        updatedAt: t - 2000,
+        // A due date tomorrow so the "Due" filter and the amber "due soon" badge
+        // have something to show in the demo (pinned to local midnight, like any
+        // real due date). dayStart/DAY_MS are safe here — demoSeed runs at boot,
+        // after every top-level declaration has initialised.
+        dueAt: dayStart(t) + DAY_MS,
+        updatedAt: t - 1800,
         events: [
           { id: 'e_l1', kind: 'opened', at: t - 3000 },
           { id: 'e_l2', kind: 'labeled', at: t - 2500, name: 'errand' },
           { id: 'e_l3', kind: 'task', at: t - 2000, text: 'Bread', done: true },
+          { id: 'e_l4', kind: 'due', at: t - 1800, from: null, to: dayStart(t) + DAY_MS },
         ],
       }),
     ];
@@ -592,7 +605,7 @@
     const n = {
       id: uid('n_'), title: title.trim(), body: '', tags: [],
       events: [{ id: uid('e_'), kind: 'opened', at: t }],
-      parentId: parentId || null, status: 'open', createdAt: t, updatedAt: t,
+      parentId: parentId || null, status: 'open', dueAt: null, createdAt: t, updatedAt: t,
     };
     notches.push(n);
     // Creating a sub-notch is itself an event on the parent's timeline.
@@ -616,6 +629,18 @@
   async function setStatus(n, status) {
     n.status = status;
     logEvent(n, 'status', { status });
+    await persist(n);
+  }
+  // setDue sets, changes or clears a notch's due date. `dueAt` is a ms timestamp
+  // (pinned to local midnight by dayStart) or null. A no-op change is skipped so
+  // re-picking the same day doesn't log a spurious event; otherwise a `due` event
+  // records the transition (from → to), the same append-only pattern labels use.
+  async function setDue(n, dueAt) {
+    const to = (dueAt == null) ? null : dueAt;
+    const from = (n.dueAt == null) ? null : n.dueAt;
+    if (from === to) return;
+    n.dueAt = to;
+    logEvent(n, 'due', { from, to });
     await persist(n);
   }
   async function addComment(n, body) {
@@ -1215,23 +1240,33 @@
   const liveAttachments = (n) => (n.events || []).filter((e) => e.kind === 'attachment' && !e.deleted);
 
   // parseQuery pulls `is:` and `no:` tokens (e.g. "is:open", "is:closed",
-  // "no:parent") out of a search string, GitHub-issue-search style, leaving
-  // the rest as free text. "closed" matches any non-open status, mirroring
-  // the open/closed split notches otherwise present to the user. "no:parent"
-  // is not a status — it's the rollup filter that hides sub-notches, on by
-  // default (see DEFAULT_QUERY); dropping it from the search shows everything.
+  // "is:due", "no:parent") out of a search string, GitHub-issue-search style,
+  // leaving the rest as free text. "closed" matches any non-open status,
+  // mirroring the open/closed split notches otherwise present to the user.
+  // "due"/"overdue" are not statuses — they filter on the due date (see
+  // dueState): "due" is anything with a live due date, "overdue" only the ones
+  // already past. "no:parent" is the rollup filter that hides sub-notches, on
+  // by default (see DEFAULT_QUERY); dropping it from the search shows everything.
   function parseQuery(q) {
     const tokens = (q || '').trim().split(/\s+/).filter(Boolean);
     const statuses = [];
     const text = [];
     let noParent = false;
+    let due = false;
+    let overdue = false;
     for (const t of tokens) {
-      const is = /^is:(open|closed|done|not_planned)$/i.exec(t);
-      if (is) { statuses.push(is[1].toLowerCase()); continue; }
+      const is = /^is:(open|closed|done|not_planned|due|overdue)$/i.exec(t);
+      if (is) {
+        const v = is[1].toLowerCase();
+        if (v === 'due') { due = true; continue; }
+        if (v === 'overdue') { overdue = true; continue; }
+        statuses.push(v);
+        continue;
+      }
       if (/^no:parent$/i.test(t)) { noParent = true; continue; }
       text.push(t);
     }
-    return { statuses, text: text.join(' '), noParent };
+    return { statuses, text: text.join(' '), noParent, due, overdue };
   }
 
   function matchesStatus(n, statuses) {
@@ -1241,8 +1276,12 @@
   }
 
   function matches(n, q) {
-    const { statuses, text } = parseQuery(q);
+    const { statuses, text, due, overdue } = parseQuery(q);
     if (!matchesStatus(n, statuses)) return false;
+    // A resolved notch's due state is 'none', so is:due/is:overdue naturally
+    // only ever match open notches — no extra status guard needed.
+    if (overdue && dueState(n) !== 'overdue') return false;
+    if (due && dueState(n) === 'none') return false;
     if (!text) return true;
     const t = text.toLowerCase();
     return n.title.toLowerCase().includes(t)
@@ -1255,6 +1294,57 @@
     const d = new Date(ms);
     const p = (x) => String(x).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  // ---------- due dates ----------
+  // A due date is a *day*, not a moment, so everything below works in whole
+  // local days. dayStart snaps a timestamp to local midnight; dueMs turns a
+  // date-input value ("YYYY-MM-DD") into that same midnight ms (and back).
+  const DUE_SOON_DAYS = 3; // "due soon" (amber) covers today through +2 days.
+  const DAY_MS = 86400000;
+  function dayStart(ms) { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); }
+  function dueMs(value) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+    if (!m) return null;
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return Number.isNaN(d.getTime()) ? null : d.getTime();
+  }
+  function dueInputValue(ms) {
+    const d = new Date(ms);
+    const p = (x) => String(x).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+  // Whole-day delta from today (negative = past). Used for both the badge state
+  // and its wording ("due tomorrow", "overdue by 2 days").
+  const dueDeltaDays = (ms) => Math.round((dayStart(ms) - dayStart(now())) / DAY_MS);
+  // A notch's due state drives the badge colour and the is:due/is:overdue
+  // filters. A resolved notch (done / not planned) is settled, so its due date
+  // no longer flags — it returns 'none', same as a notch with no due date.
+  function dueState(n) {
+    if (n.dueAt == null || notchStatus(n) !== 'open') return 'none';
+    const delta = dueDeltaDays(n.dueAt);
+    if (delta < 0) return 'overdue';
+    if (delta < DUE_SOON_DAYS) return 'soon';
+    return 'later';
+  }
+  // Human wording for a due date, relative where it reads naturally.
+  function dueWords(ms) {
+    const delta = dueDeltaDays(ms);
+    if (delta < 0) { const d = -delta; return `overdue by ${d} day${d === 1 ? '' : 's'}`; }
+    if (delta === 0) return 'due today';
+    if (delta === 1) return 'due tomorrow';
+    if (delta < DUE_SOON_DAYS) return `due in ${delta} days`;
+    const d = new Date(ms);
+    const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
+    const year = d.getFullYear() === new Date(now()).getFullYear() ? '' : ` ${d.getFullYear()}`;
+    return `due ${mon} ${d.getDate()}${year}`;
+  }
+  // The list-card badge: nothing when the due date doesn't flag, otherwise a
+  // colour-coded chip (grey later / amber soon / red overdue).
+  function dueBadge(n) {
+    const state = dueState(n);
+    if (state === 'none') return '';
+    return `<span class="due ${state}">${esc(dueWords(n.dueAt))}</span>`;
   }
 
   const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>';
@@ -1315,7 +1405,7 @@
     if (files) bits.push(`<span class="num">${files}</span> file${files === 1 ? '' : 's'}`);
     if ((n.body || '').trim() && !s.total) bits.push('description');
     const meta = bits.length ? bits.join(' · ') : 'empty';
-    const tags = statusLab(n) + n.tags.map((name) => labChip(name)).join('');
+    const tags = statusLab(n) + dueBadge(n) + n.tags.map((name) => labChip(name)).join('');
     return `
       <a class="notch-card" href="#/n/${esc(n.id)}">
         <div class="title">${n.title ? esc(n.title) : '<span class="untitled">untitled</span>'}</div>
@@ -1353,11 +1443,12 @@
       <section class="section">
         <h2><span>Notches</span></h2>
         <div class="section-body stack">
-          <label class="field"><span>Search</span><input class="input" id="search" type="search" value="${esc(DEFAULT_QUERY)}" placeholder="Filter by title, description, comment, or tag… (try is:open, is:closed, no:parent)"/></label>
+          <label class="field"><span>Search</span><input class="input" id="search" type="search" value="${esc(DEFAULT_QUERY)}" placeholder="Filter by title, description, comment, or tag… (try is:open, is:due, is:overdue, no:parent)"/></label>
           <div class="row" style="align-items:center; flex-wrap:nowrap">
-            <div class="filter" id="filter" role="group" aria-label="Filter by status" style="flex:1 1 auto">
+            <div class="filter" id="filter" role="group" aria-label="Filter notches" style="flex:1 1 auto">
               <button type="button" data-status="open" aria-pressed="true"><span class="fdot" aria-hidden="true"></span>Open <span class="n">0</span></button>
               <button type="button" data-status="closed" aria-pressed="false"><span class="fdot" aria-hidden="true"></span>Closed <span class="n">0</span></button>
+              <button type="button" class="due-toggle" data-due aria-pressed="false"><span class="fdot" aria-hidden="true"></span>Due <span class="n">0</span></button>
             </div>
             <div class="menu" data-menu="new-notch">
               <button class="btn primary sm" id="new-notch" type="button" data-menu-trigger aria-haspopup="true" aria-expanded="false">New notch</button>
@@ -1397,7 +1488,9 @@
 
   // The Open/Closed tabs are a shortcut over the same `is:` search token: they
   // reflect the current query's status and, on click, rewrite it (keeping any
-  // free-text terms and the "no:parent" rollup token). Counts are of
+  // free-text terms and the "no:parent" rollup token). "Due" sits alongside
+  // them but is orthogonal to status — it toggles is:due independently, since a
+  // notch is due-or-not regardless of the open/closed lens. Counts are of
   // top-level notches, which is what the list shows by default (delete
   // "no:parent" from the search to include sub-notches too).
   function updateFilter(q) {
@@ -1405,20 +1498,39 @@
     if (!f) return;
     const tops = topLevel();
     const openN = tops.filter((n) => notchStatus(n) === 'open').length;
-    const { statuses } = parseQuery(q);
+    const dueN = tops.filter((n) => dueState(n) !== 'none').length;
+    const { statuses, due, overdue } = parseQuery(q);
     const isClosed = statuses.some((s) => s === 'closed' || s === 'done' || s === 'not_planned');
     const isOpen = statuses.includes('open') && !isClosed;
     f.querySelector('[data-status="open"]').setAttribute('aria-pressed', String(isOpen));
     f.querySelector('[data-status="closed"]').setAttribute('aria-pressed', String(isClosed));
+    f.querySelector('[data-due]').setAttribute('aria-pressed', String(due || overdue));
     f.querySelector('[data-status="open"] .n').textContent = openN;
     f.querySelector('[data-status="closed"] .n').textContent = tops.length - openN;
+    f.querySelector('[data-due] .n').textContent = dueN;
   }
 
   function setStatusFilter(status) {
     const input = document.getElementById('search');
     if (!input) return;
-    const { text, noParent } = parseQuery(input.value);
-    input.value = `is:${status}` + (noParent ? ' no:parent' : '') + (text ? ' ' + text : '');
+    const { text, noParent, due, overdue } = parseQuery(input.value);
+    const dueTok = overdue ? ' is:overdue' : (due ? ' is:due' : '');
+    input.value = `is:${status}` + dueTok + (noParent ? ' no:parent' : '') + (text ? ' ' + text : '');
+    renderCards(input.value);
+  }
+
+  // Toggling "Due" flips is:due on/off while leaving the status lens and other
+  // tokens untouched. If is:overdue is already set, it's the "on" state too, so
+  // a toggle-off clears both. Adding is:due keeps whatever status is selected.
+  function setDueFilter() {
+    const input = document.getElementById('search');
+    if (!input) return;
+    const { statuses, text, noParent, due, overdue } = parseQuery(input.value);
+    const on = due || overdue;
+    const statusTok = statuses.map((s) => `is:${s}`).join(' ');
+    const parts = [statusTok, on ? '' : 'is:due', noParent ? 'no:parent' : '', text]
+      .filter(Boolean);
+    input.value = parts.join(' ');
     renderCards(input.value);
   }
 
@@ -1486,6 +1598,7 @@
     image: svgIcon('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15l-5-5L5 21"/>'),
     file: svgIcon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/>'),
     download: svgIcon('<path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/>'),
+    cal: svgIcon('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/>'),
   };
 
   function statePill(n) {
@@ -1607,6 +1720,12 @@
         return evSmall('', ICON.branch, `added the sub-notch <a href="#/n/${esc(ev.subId)}" class="ev-link">${esc(title)}</a>`, ev.at);
       }
       case 'renamed': return evSmall('', ICON.pencil, `renamed this to <b>${esc(ev.to || 'untitled')}</b>`, ev.at);
+      case 'due': {
+        if (ev.to == null) return evSmall('', ICON.cal, 'cleared the due date', ev.at, ev.by);
+        const when = `<b>${esc(dueInputValue(ev.to))}</b>`;
+        const verb = ev.from == null ? 'set the due date to' : 'changed the due date to';
+        return evSmall('', ICON.cal, `${verb} ${when}`, ev.at, ev.by);
+      }
       case 'tally': {
         const link = `<a href="#/t/${esc(ev.tallyId)}" class="ev-link">${esc(ev.title || 'a tally')}</a>`;
         if (ev.action === 'created') return evSystem('accent', ICON.merge, `added by tally ${link}`, ev.at);
@@ -1716,6 +1835,26 @@
       `<button class="btn ghost sm" type="submit">Add</button></form>${suggestions}</div></div></div>`;
   }
 
+  // The due-date field sits just under the labels: a native date picker, a
+  // colour-coded hint once the date is close or past, and a clear (×) button
+  // that only appears when a date is set. Editing it flows through setDue, which
+  // logs the change to the timeline. A resolved notch keeps showing its date but
+  // drops the hint, since dueState() treats it as settled.
+  function dueField(n) {
+    const state = dueState(n);
+    const val = n.dueAt == null ? '' : dueInputValue(n.dueAt);
+    const hint = (n.dueAt != null && (state === 'overdue' || state === 'soon'))
+      ? `<span class="due-hint ${state}">${esc(dueWords(n.dueAt))}</span>`
+      : '';
+    const clear = n.dueAt != null
+      ? '<button class="due-clear" type="button" data-clear-due aria-label="Clear due date">&times;</button>'
+      : '';
+    return '<div class="due-field">' +
+      `<span class="due-cap">${ICON.cal}<span>Due date</span></span>` +
+      `<input class="input due-input" id="due" type="date" value="${esc(val)}" aria-label="Due date"/>` +
+      hint + clear + '</div>';
+  }
+
   // A sub-notch row condenses cardHTML's title/tags/meta into one table line —
   // sub-notches are a roll-up, not a second notch list, so each one only needs
   // to be scannable at a glance, not laid out like its own card.
@@ -1730,7 +1869,7 @@
     if (comments) bits.push(`${comments} comment${comments === 1 ? '' : 's'}`);
     if (files) bits.push(`${files} file${files === 1 ? '' : 's'}`);
     const meta = bits.length ? bits.join(' · ') : '—';
-    const tags = statusLab(n) + n.tags.map((name) => labChip(name)).join('');
+    const tags = statusLab(n) + dueBadge(n) + n.tags.map((name) => labChip(name)).join('');
     return `
       <tr>
         <td class="subs-title">
@@ -1813,6 +1952,7 @@
         <div class="section-body stack">
           ${labelsRow(n)}
           <label class="field"><span>Title</span><input class="input title-input" id="title" type="text" value="${esc(n.title)}" placeholder="Title"/></label>
+          ${dueField(n)}
           ${notchTalliesBlock(n)}
           ${subsBlock(n)}
         </div>
@@ -2673,6 +2813,11 @@
       setStatusFilter(fbtn.getAttribute('data-status'));
       return;
     }
+    if (e.target.closest('.filter button[data-due]')) {
+      e.preventDefault();
+      setDueFilter();
+      return;
+    }
 
     // --- application interactions ---
     // An app's action button authors a tally (respecting scope) and routes to it;
@@ -2829,6 +2974,14 @@
       addLabelToNotch(n, addTag.getAttribute('data-add-tag')).then(() => renderDetail(n));
       return;
     }
+    // Clearing the due date (the × next to the picker) empties it and logs the
+    // change, same path as picking a date, just to null.
+    if (e.target.closest('[data-clear-due]')) {
+      e.preventDefault();
+      const n = currentDetail(); if (!n) return;
+      setDue(n, null).then(() => renderDetail(n));
+      return;
+    }
     // Status changes live in the header kebab now: one handler for all three.
     const setStat = e.target.closest('[data-set-status]');
     if (setStat) {
@@ -2921,6 +3074,14 @@
       const n = currentDetail(); if (!n) return;
       clearTimeout(bodyTimer);
       if (n.body !== e.target.value) { n.body = e.target.value; persist(n); }
+      return;
+    }
+    // The due-date picker fires `change` when a day is chosen (or the field is
+    // emptied via the picker's own clear). setDue no-ops an unchanged value and
+    // logs a `due` event otherwise, then the detail re-renders to show the badge.
+    if (e.target.id === 'due') {
+      const n = currentDetail(); if (!n) return;
+      setDue(n, dueMs(e.target.value)).then(() => renderDetail(n));
       return;
     }
     // Renaming: a blur on the title commits the change and, when it actually

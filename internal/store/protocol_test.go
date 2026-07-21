@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/clarkbar-sys/tally/internal/model"
 )
@@ -117,8 +118,10 @@ func TestUpsertNotchAndTimeline(t *testing.T) {
 		t.Fatal("parent notch missing timestamps")
 	}
 
+	// The child carries a due date, so the round-trip covers due_at as well.
+	due := time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC)
 	if _, err := s.UpsertNotch(ctx, model.Notch{
-		ID: "n_child", Title: "Sub", ParentID: "n_parent", Status: model.NotchOpen,
+		ID: "n_child", Title: "Sub", ParentID: "n_parent", Status: model.NotchOpen, DueAt: due,
 	}); err != nil {
 		t.Fatalf("UpsertNotch (child): %v", err)
 	}
@@ -153,6 +156,13 @@ func TestUpsertNotchAndTimeline(t *testing.T) {
 	}
 	if children[0].ParentID != "n_parent" {
 		t.Fatalf("child ParentID = %q, want n_parent", children[0].ParentID)
+	}
+	if !children[0].DueAt.Equal(due) {
+		t.Fatalf("child DueAt = %v, want %v", children[0].DueAt, due)
+	}
+	// The parent has no due date, so it round-trips as the zero time (SQL NULL).
+	if !got.DueAt.IsZero() {
+		t.Fatalf("parent DueAt = %v, want zero", got.DueAt)
 	}
 
 	// Append-only timeline, returned in append order.
