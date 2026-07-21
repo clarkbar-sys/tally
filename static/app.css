@@ -440,6 +440,14 @@
   .sync.error .dot{ background: var(--danger); box-shadow: 0 0 6px color-mix(in srgb, var(--danger) 60%, transparent); }
   .sync.syncing .dot{ animation: verPulse 1.2s ease-in-out infinite; }
   @media (prefers-reduced-motion: reduce){ .sync.syncing .dot{ animation: none; } }
+  /* Conflict is its own state, distinct from a plain network error (#124): the
+     hub changed underneath local edits. The pill becomes a button into the
+     quarantine view, so it reads as actionable, not just red. */
+  .sync.conflict{ color: var(--ink); border-color: color-mix(in srgb, var(--accent) 55%, var(--line-strong)); cursor: pointer; }
+  .sync.conflict .dot{ background: var(--accent); box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 65%, transparent); animation: verPulse 1.6s ease-in-out infinite; }
+  .sync.conflict:hover{ border-color: var(--accent); color: var(--accent-strong); }
+  .sync.conflict:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce){ .sync.conflict .dot{ animation: none; } }
 
   /* ---------- update popup ---------- */
   /* The upgrade sheet opened from the version pill: the new tag, the running
@@ -467,6 +475,22 @@
   }
   .cmdbox .btn{ flex: 0 0 auto; }
   .um-actions{ display: flex; justify-content: flex-end; gap: var(--sp-2); }
+
+  /* ---------- conflict / quarantine view (#124) ---------- */
+  /* Opened from the conflict sync pill: the snapshot the tally node rejected,
+     plainly marked, with keep-mine / discard-mine. Reuses the .update-modal
+     shell; .cf-* style the quarantined-changes summary. */
+  .cf-box{
+    padding: 12px 14px; margin-bottom: var(--sp-4);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line-strong));
+    border-radius: var(--r-sm); background: var(--bg);
+  }
+  .cf-h{ display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); font-size: 13px; font-weight: 600; color: var(--ink); }
+  .cf-when{ font-weight: 400; font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
+  .cf-counts{ margin-top: 6px; font-size: 12px; color: var(--ink-dim); }
+  .cf-list{ margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--ink); }
+  .cf-list li{ margin: 2px 0; }
+  .cf-list .cf-more{ list-style: none; margin-left: -18px; color: var(--ink-dim); font-style: italic; }
   .gh-link{
     display: inline-flex; align-items: center; justify-content: center;
     width: 28px; height: 28px; border-radius: var(--r-sm);
