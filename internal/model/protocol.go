@@ -160,6 +160,11 @@ type Notch struct {
 	ParentID string
 	Status   NotchStatus
 
+	// DueAt is the optional day the notch is due by; the zero time means no due
+	// date. Caller-owned (the client pins it to the start of the chosen day) and
+	// stored as NULL when unset.
+	DueAt time.Time
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
