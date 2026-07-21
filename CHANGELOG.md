@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.10.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.9.0...tally-v0.10.0) (2026-07-21)
+
+
+### Features
+
+* add no:parent search filter to show rolled-up sub-notches ([#117](https://github.com/clarkbar-sys/tally/issues/117)) ([9c64189](https://github.com/clarkbar-sys/tally/commit/9c64189d12ca66ef508f6ae1425de8d188678984))
+* **web:** detect sync conflicts with version CAS + quarantine view ([#125](https://github.com/clarkbar-sys/tally/issues/125)) ([a3af00e](https://github.com/clarkbar-sys/tally/commit/a3af00eed9c1e369aadea9e082d90bb06cd4e497)), closes [#124](https://github.com/clarkbar-sys/tally/issues/124)
+* **web:** give notches an optional due date ([#120](https://github.com/clarkbar-sys/tally/issues/120)) ([baeef65](https://github.com/clarkbar-sys/tally/commit/baeef65d71d46f80f492799f37c02de2be9ecf98)), closes [#119](https://github.com/clarkbar-sys/tally/issues/119)
+* **web:** local IndexedDB mirror + hub sync, so edits survive offline ([#122](https://github.com/clarkbar-sys/tally/issues/122)) ([#123](https://github.com/clarkbar-sys/tally/issues/123)) ([87a7438](https://github.com/clarkbar-sys/tally/commit/87a74383839847ba1a9093b905b5126a7644850c))
+* **web:** persist the live build to server-side SQLite, replacing IndexedDB ([#121](https://github.com/clarkbar-sys/tally/issues/121)) ([4d22c24](https://github.com/clarkbar-sys/tally/commit/4d22c245e38ba3d6be6e518bd555864a7fe74834)), closes [#113](https://github.com/clarkbar-sys/tally/issues/113)
+
 ## [0.9.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.8.0...tally-v0.9.0) (2026-07-21)
 
 
