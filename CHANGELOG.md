@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.6.0...tally-v0.7.0) (2026-07-21)
+
+
+### Features
+
+* **deploy:** install tally from prebuilt release binaries, like hush ([#108](https://github.com/clarkbar-sys/tally/issues/108)) ([18f13fd](https://github.com/clarkbar-sys/tally/commit/18f13fd11f340db02c0d517b060150105d0982c4))
+* **store:** server-side protocol persistence layer (S0) ([#106](https://github.com/clarkbar-sys/tally/issues/106)) ([856eb71](https://github.com/clarkbar-sys/tally/commit/856eb7101f026b208290cf6df381d0a746451b61))
+
 ## [0.6.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.5.0...tally-v0.6.0) (2026-07-20)
 
 
