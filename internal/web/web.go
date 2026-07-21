@@ -37,7 +37,9 @@ func Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
 	mux.HandleFunc("GET /design", page(GalleryPage()))
-	mux.HandleFunc("GET /{$}", page(AppPage()))
+	// Served (tailnet or -local): the live build. app.js persists to IndexedDB,
+	// so a reload keeps your notches — unlike the demo-mode static export.
+	mux.HandleFunc("GET /{$}", page(AppPage(false)))
 	return mux
 }
 
@@ -73,7 +75,9 @@ func Export(ctx context.Context, dir string) error {
 		return fmt.Errorf("web: export: %w", err)
 	}
 	defer index.Close()
-	if err := AppPage().Render(ctx, index); err != nil {
+	// The static export is the demo build: no server backs it, so app.js runs
+	// entirely in memory with the demo banner and reload-to-reset behaviour.
+	if err := AppPage(true).Render(ctx, index); err != nil {
 		return fmt.Errorf("web: export: render: %w", err)
 	}
 

@@ -17,6 +17,18 @@ const iconCheck = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 // so the template stays declarative.
 func versionString() string { return version.String() }
 
+// pageMode is the value of the app shell's data-mode attribute, the one signal
+// static/app.js reads to pick its storage backend. The static export (GitHub
+// Pages / PR preview) renders "demo" — in-memory only, wiped on reload — while
+// the build tally serves on the tailnet renders "live", persisting to the
+// browser's IndexedDB. See AppPage and the "storage mode" note in app.js.
+func pageMode(demo bool) string {
+	if demo {
+		return "demo"
+	}
+	return "live"
+}
+
 // markCount renders a tally-mark specimen's count label.
 func markCount(n int) string { return strconv.Itoa(n) }
 

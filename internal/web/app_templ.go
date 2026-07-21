@@ -14,14 +14,18 @@ import templruntime "github.com/a-h/templ/runtime"
 // chrome — the top bar and a quiet status line — plus an empty <main> mount
 // point and a <noscript> fallback. Everything else (the tally list and detail
 // views) is driven client-side by static/app.js: no server, no data layer here.
-// For now the app runs in demo mode — state lives in memory only and a reload
-// starts fresh (see static/app.js). The same export feeds GitHub Pages, so the
-// published site is the whole app.
+//
+// The demo flag is the one difference between the two builds that share this
+// shell. When demo is true (the static export behind GitHub Pages / PR
+// previews) the app runs in memory only and a reload starts fresh; when false
+// (the build tally serves on the tailnet) app.js mirrors state to the browser's
+// IndexedDB so it survives reloads. It reaches app.js as the <html data-mode>
+// attribute — see the "storage mode" note in static/app.js.
 //
 // The default theme is Paper (a calm cream-on-sepia almanac look): app.css
 // carries it on :root, so a fresh browser needs no data-theme attribute. The
 // theme picker and an inline <head> script can still switch it per browser.
-func AppPage() templ.Component {
+func AppPage(demo bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -42,20 +46,33 @@ func AppPage() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"light\"><meta name=\"theme-color\" content=\"#ece0c8\"><title>tally</title><meta name=\"description\" content=\"tally — a local-first container for notes, checklists, and reminders.\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"static/favicon.svg\"><script>\n\t\t\t\t(function(){try{var t=localStorage.getItem('tally.theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();\n\t\t\t</script><link rel=\"stylesheet\" href=\"static/app.css\"><script src=\"static/app.js\" defer></script></head><body><div class=\"crt-beam\" aria-hidden=\"true\"></div><div class=\"app\"><header class=\"topbar\"><a class=\"brand\" href=\"./\">tally</a><div class=\"topbar-right\"><label class=\"theme-picker\"><span class=\"visually-hidden\">Theme</span> <select id=\"theme-select\" aria-label=\"Theme\"><option value=\"paper\" selected>Paper</option> <option value=\"slate\">Slate</option> <option value=\"amber-crt\">Amber CRT</option> <option value=\"gruvbox\">Gruvbox</option></select></label> <span class=\"version\" title=\"running build\"><span class=\"dot\" aria-hidden=\"true\"></span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\" data-mode=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(versionString())
+		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(pageMode(demo))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 50, Col: 111}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 22, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</span></div></header><div class=\"ticker\" id=\"ticker\" role=\"status\" aria-label=\"status\"><span class=\"stat\"><b>0</b> open</span></div><main id=\"view\" aria-live=\"polite\"></main><noscript><p class=\"lede\" style=\"padding:var(--sp-4)\">tally is a local-first app — it needs JavaScript enabled to run. Your data stays in this browser.</p></noscript></div></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"light\"><meta name=\"theme-color\" content=\"#ece0c8\"><title>tally</title><meta name=\"description\" content=\"tally — a local-first container for notes, checklists, and reminders.\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"static/favicon.svg\"><script>\n\t\t\t\t(function(){try{var t=localStorage.getItem('tally.theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();\n\t\t\t</script><link rel=\"stylesheet\" href=\"static/app.css\"><script src=\"static/app.js\" defer></script></head><body><div class=\"crt-beam\" aria-hidden=\"true\"></div><div class=\"app\"><header class=\"topbar\"><a class=\"brand\" href=\"./\">tally</a><div class=\"topbar-right\"><label class=\"theme-picker\"><span class=\"visually-hidden\">Theme</span> <select id=\"theme-select\" aria-label=\"Theme\"><option value=\"paper\" selected>Paper</option> <option value=\"slate\">Slate</option> <option value=\"amber-crt\">Amber CRT</option> <option value=\"gruvbox\">Gruvbox</option></select></label> <span class=\"version\" title=\"running build\"><span class=\"dot\" aria-hidden=\"true\"></span>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var3 string
+		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(versionString())
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 54, Col: 111}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</span></div></header><div class=\"ticker\" id=\"ticker\" role=\"status\" aria-label=\"status\"><span class=\"stat\"><b>0</b> open</span></div><main id=\"view\" aria-live=\"polite\"></main><noscript><p class=\"lede\" style=\"padding:var(--sp-4)\">tally is a local-first app — it needs JavaScript enabled to run. Your data stays in this browser.</p></noscript></div></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
