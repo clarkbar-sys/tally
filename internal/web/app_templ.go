@@ -18,9 +18,10 @@ import templruntime "github.com/a-h/templ/runtime"
 // The demo flag is the one difference between the two builds that share this
 // shell. When demo is true (the static export behind GitHub Pages / PR
 // previews) the app runs in memory only and a reload starts fresh; when false
-// (the build tally serves on the tailnet) app.js mirrors state to the browser's
-// IndexedDB so it survives reloads. It reaches app.js as the <html data-mode>
-// attribute — see the "storage mode" note in static/app.js.
+// (the build tally serves on the tailnet) app.js mirrors state to a local
+// IndexedDB store and syncs it to the tally node's SQLite when reachable, so it
+// survives reloads and offline use (#122). It reaches app.js as the <html
+// data-mode> attribute — see the "storage mode" note in static/app.js.
 //
 // The default theme is Paper (a calm cream-on-sepia almanac look): app.css
 // carries it on :root, so a fresh browser needs no data-theme attribute. The
@@ -53,20 +54,20 @@ func AppPage(demo bool) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(pageMode(demo))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 22, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 23, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"light\"><meta name=\"theme-color\" content=\"#ece0c8\"><title>tally</title><meta name=\"description\" content=\"tally — a local-first container for notes, checklists, and reminders.\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"static/favicon.svg\"><script>\n\t\t\t\t(function(){try{var t=localStorage.getItem('tally.theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();\n\t\t\t</script><link rel=\"stylesheet\" href=\"static/app.css\"><script src=\"static/app.js\" defer></script></head><body><div class=\"crt-beam\" aria-hidden=\"true\"></div><div class=\"app\"><header class=\"topbar\"><a class=\"brand\" href=\"./\">tally</a><div class=\"topbar-right\"><label class=\"theme-picker\"><span class=\"visually-hidden\">Theme</span> <select id=\"theme-select\" aria-label=\"Theme\"><option value=\"paper\" selected>Paper</option> <option value=\"slate\">Slate</option> <option value=\"amber-crt\">Amber CRT</option> <option value=\"gruvbox\">Gruvbox</option></select></label> <span class=\"version\" id=\"verchip\" title=\"running build\"><span class=\"dot\" aria-hidden=\"true\"></span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"light\"><meta name=\"theme-color\" content=\"#ece0c8\"><title>tally</title><meta name=\"description\" content=\"tally — a local-first container for notes, checklists, and reminders.\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"static/favicon.svg\"><script>\n\t\t\t\t(function(){try{var t=localStorage.getItem('tally.theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();\n\t\t\t</script><link rel=\"stylesheet\" href=\"static/app.css\"><script src=\"static/app.js\" defer></script></head><body><div class=\"crt-beam\" aria-hidden=\"true\"></div><div class=\"app\"><header class=\"topbar\"><a class=\"brand\" href=\"./\">tally</a><div class=\"topbar-right\"><label class=\"theme-picker\"><span class=\"visually-hidden\">Theme</span> <select id=\"theme-select\" aria-label=\"Theme\"><option value=\"paper\" selected>Paper</option> <option value=\"slate\">Slate</option> <option value=\"amber-crt\">Amber CRT</option> <option value=\"gruvbox\">Gruvbox</option></select></label> <span class=\"sync\" id=\"syncchip\" title=\"sync status\" hidden><span class=\"dot\" aria-hidden=\"true\"></span>Synced</span> <span class=\"version\" id=\"verchip\" title=\"running build\"><span class=\"dot\" aria-hidden=\"true\"></span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(versionString())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 54, Col: 124}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 56, Col: 124}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
