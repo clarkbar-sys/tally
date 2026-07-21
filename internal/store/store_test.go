@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,9 +57,26 @@ func TestOpenIsIdempotent(t *testing.T) {
 	if err := s2.db.QueryRow("SELECT COUNT(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatalf("count schema_migrations: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("schema_migrations rows = %d, want 1", count)
+	if want := embeddedMigrationCount(t); count != want {
+		t.Fatalf("schema_migrations rows = %d, want %d (one per embedded migration)", count, want)
 	}
+}
+
+// embeddedMigrationCount counts the .sql files the migration runner applies, so
+// the idempotency check tracks the schema as new migrations land.
+func embeddedMigrationCount(t *testing.T) int {
+	t.Helper()
+	entries, err := migrationFiles.ReadDir("migrations")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			n++
+		}
+	}
+	return n
 }
 
 func testAccount() model.Account {
