@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.7.0...tally-v0.8.0) (2026-07-21)
+
+
+### Features
+
+* **web:** persist on the tailnet, keep demo mode for the static export ([#110](https://github.com/clarkbar-sys/tally/issues/110)) ([54ce37d](https://github.com/clarkbar-sys/tally/commit/54ce37de3989a8e3b22028304a832b3721828929))
+
 ## [0.7.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.6.0...tally-v0.7.0) (2026-07-21)
 
 
