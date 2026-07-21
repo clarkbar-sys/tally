@@ -7,11 +7,34 @@ A generic container for notes, checklists, and reminders — closer to a Trello 
 
 A [tally stick](https://en.wikipedia.org/wiki/Tally_stick): notched wood, split so both parties hold half the record — annotation is the point, aggregation (of anything, finance included) is just one input to it.
 
-**v1 is local-first**: a client-only app, no server, no auth, no sync yet. See [epic #1](https://github.com/clarkbar-sys/tally/issues/1) for the full pivot writeup and what's deferred to later (finance sync via SimpleFIN, tailnet deploy, auth).
+**v1 is local-first**: a client-only app, no server, no auth, no sync yet. See [epic #1](https://github.com/clarkbar-sys/tally/issues/1) for the full pivot writeup and what's deferred to later (finance sync via SimpleFIN, auth).
+
+## Install
+
+To reach tally from your other devices, run it on your tailnet. A single
+Go binary joins the tailnet as its own node via [tsnet](https://tailscale.com/kb/1244/tsnet)
+and serves the app at `https://tally.<tailnet>.ts.net` — tailnet-only, its own
+identity (see [ADR-0003](docs/adr/0003-tailnet-integration.md)). `install.sh`
+fetches the prebuilt release binary and sets it up as a systemd service under a
+dedicated, unprivileged `tally` user — no Go toolchain, no git clone on the box.
+It **must run as root**:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/clarkbar-sys/tally/main/install.sh | sudo sh
+```
+
+You supply a *tagged* Tailscale auth key (`tag:tally`) as a secret; the
+installer prints exactly what to do if it's missing. It's systemd-only (Linux).
+See [`deploy/README.md`](deploy/README.md) for the full walkthrough, the
+build-from-a-checkout path ([`deploy/install.sh`](deploy/install.sh)), and how
+the tailnet ACL becomes tally's access boundary.
+
+Just want to try it in a browser with no tailnet? Use `-local` (see
+[Development](#development) below) — data stays in your browser.
 
 ## Stack
 
-Go + [templ](https://templ.guide/) render the static app shell; the app itself is vanilla JavaScript over the browser's [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) — client-only, no server. The earlier finance-ledger build (SQLite store, source-adapter interface, tsnet tailnet deploy, and its templ + HTMX server) is shelved in git history, not deleted — it returns once a real backend is justified. See [`docs/adr/`](docs/adr/) for the decisions behind it and why.
+Go + [templ](https://templ.guide/) render the static app shell; the app itself is vanilla JavaScript over the browser's [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) — client-only, no server. The Go binary also serves that shell on the tailnet via [tsnet](https://tailscale.com/kb/1244/tsnet) (see [Install](#install)). The earlier finance-ledger build (SQLite store, source-adapter interface, and its templ + HTMX server) is shelved in git history, not deleted — it returns once a real backend is justified. See [`docs/adr/`](docs/adr/) for the decisions behind it and why.
 
 ## Development
 
