@@ -433,10 +433,23 @@
      the header (open notches, items done, tags). Same info, no terminal chrome,
      and it never clips on a narrow screen. */
   .ticker{
-    display: flex; flex-wrap: wrap; gap: 4px var(--sp-3); align-items: baseline;
+    display: flex; flex-direction: column; gap: 6px;
     margin: var(--sp-3) var(--sp-4) 0;
     font-size: 12.5px; color: var(--ink-dim);
   }
+  /* the "Stats" roll-up toggle — same button pattern as the sub-notches roll-up */
+  .stats-toggle{
+    display: inline-flex; align-items: center; gap: 7px; padding: 4px 2px;
+    border: 0; background: none; cursor: pointer; color: var(--ink-dim); align-self: flex-start;
+    font: 600 12.5px var(--font-body); letter-spacing: .01em;
+  }
+  .stats-toggle:hover{ color: var(--ink); }
+  .stats-toggle:focus-visible{ outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+  .stats-toggle .caret{ display: inline-flex; color: var(--ink-faint); transition: transform .14s ease; }
+  .stats-toggle .caret svg{ width: 15px; height: 15px; }
+  .ticker:not(.collapsed) .stats-toggle .caret{ transform: rotate(90deg); }
+  .ticker.collapsed .stats-body{ display: none; }
+  .stats-body{ display: flex; flex-wrap: wrap; gap: 4px var(--sp-3); align-items: baseline; }
   .ticker .stat{ display: inline-flex; gap: 5px; align-items: baseline; }
   .ticker .stat + .stat::before{ content: "·"; color: var(--ink-faint); margin-right: var(--sp-3); }
   .ticker .stat b{ color: var(--ink); font-weight: 600; }
@@ -1092,6 +1105,9 @@
   @media (max-width: 480px){
     main{ padding: 0 var(--sp-3); }
     .ticker{ margin-left: var(--sp-3); margin-right: var(--sp-3); }
+    /* Each stat gets its own line instead of wrapping mid-phrase across two. */
+    .stats-body{ flex-direction: column; align-items: flex-start; gap: 6px; }
+    .stats-body .stat + .stat::before{ content: none; margin-right: 0; }
     .viewnav{ margin-left: var(--sp-3); margin-right: var(--sp-3); }
     .topbar{ padding: var(--sp-3) var(--sp-3) var(--sp-3); gap: var(--sp-2); }
     .brand{ font-size: 20px; }
