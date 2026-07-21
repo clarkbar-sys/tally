@@ -24,9 +24,17 @@ import (
 //go:embed static
 var staticFS embed.FS
 
-// Handler returns the tally HTTP handler. It serves the app shell and static
-// assets only — persistence is client-side, so there are no data endpoints.
+// Handler returns the tally HTTP handler for the live build. It serves the app
+// shell, static assets, and one small data endpoint — GET /api/version, which
+// tells the header chip whether a newer release exists (see version.go). The
+// notch data stays client-side; there is no server-side data layer.
 func Handler() http.Handler {
+	return handler(newVersionChecker())
+}
+
+// handler builds the mux with an explicit version checker, so tests can inject a
+// stub instead of reaching GitHub.
+func handler(vc *versionChecker) http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		// staticFS is embedded at build time; a missing subdir is a build bug.
@@ -37,6 +45,9 @@ func Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
 	mux.HandleFunc("GET /design", page(GalleryPage()))
+	// The update check lives only on the served build: the static demo export
+	// (GitHub Pages) never registers this route, so it never offers an upgrade.
+	mux.HandleFunc("GET /api/version", vc.handle)
 	// Served (tailnet or -local): the live build. app.js persists to IndexedDB,
 	// so a reload keeps your notches — unlike the demo-mode static export.
 	mux.HandleFunc("GET /{$}", page(AppPage(false)))

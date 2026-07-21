@@ -59,14 +59,14 @@ func AppPage(demo bool) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"light\"><meta name=\"theme-color\" content=\"#ece0c8\"><title>tally</title><meta name=\"description\" content=\"tally — a local-first container for notes, checklists, and reminders.\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"static/favicon.svg\"><script>\n\t\t\t\t(function(){try{var t=localStorage.getItem('tally.theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();\n\t\t\t</script><link rel=\"stylesheet\" href=\"static/app.css\"><script src=\"static/app.js\" defer></script></head><body><div class=\"crt-beam\" aria-hidden=\"true\"></div><div class=\"app\"><header class=\"topbar\"><a class=\"brand\" href=\"./\">tally</a><div class=\"topbar-right\"><label class=\"theme-picker\"><span class=\"visually-hidden\">Theme</span> <select id=\"theme-select\" aria-label=\"Theme\"><option value=\"paper\" selected>Paper</option> <option value=\"slate\">Slate</option> <option value=\"amber-crt\">Amber CRT</option> <option value=\"gruvbox\">Gruvbox</option></select></label> <span class=\"version\" title=\"running build\"><span class=\"dot\" aria-hidden=\"true\"></span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"light\"><meta name=\"theme-color\" content=\"#ece0c8\"><title>tally</title><meta name=\"description\" content=\"tally — a local-first container for notes, checklists, and reminders.\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"static/favicon.svg\"><script>\n\t\t\t\t(function(){try{var t=localStorage.getItem('tally.theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();\n\t\t\t</script><link rel=\"stylesheet\" href=\"static/app.css\"><script src=\"static/app.js\" defer></script></head><body><div class=\"crt-beam\" aria-hidden=\"true\"></div><div class=\"app\"><header class=\"topbar\"><a class=\"brand\" href=\"./\">tally</a><div class=\"topbar-right\"><label class=\"theme-picker\"><span class=\"visually-hidden\">Theme</span> <select id=\"theme-select\" aria-label=\"Theme\"><option value=\"paper\" selected>Paper</option> <option value=\"slate\">Slate</option> <option value=\"amber-crt\">Amber CRT</option> <option value=\"gruvbox\">Gruvbox</option></select></label> <span class=\"version\" id=\"verchip\" title=\"running build\"><span class=\"dot\" aria-hidden=\"true\"></span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(versionString())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 54, Col: 111}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/app.templ`, Line: 54, Col: 124}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {

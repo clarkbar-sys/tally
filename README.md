@@ -32,6 +32,17 @@ the tailnet ACL becomes tally's access boundary.
 Just want to try it in a browser with no tailnet? Use `-local` (see
 [Development](#development) below) — data stays in your browser.
 
+### Staying up to date
+
+The tailnet build shows its running version in the header and checks GitHub for
+newer releases (an hourly, cached, unauthenticated call to the releases API). A
+`dev` build never nags, and if the check fails the pill just shows the version
+as before. When a newer release exists the pill lights up — click it for a popup
+with the exact command to upgrade the box over SSH (re-run `install.sh`, which
+fetches the latest release binary and restarts the service). This lives only on
+the served build; the [browser demo](https://clarkbar-sys.github.io/tally/) has
+no server to check and never offers an upgrade.
+
 ## Stack
 
 Go + [templ](https://templ.guide/) render the static app shell; the app itself is vanilla JavaScript over the browser's [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) — client-only, no server. The Go binary also serves that shell on the tailnet via [tsnet](https://tailscale.com/kb/1244/tsnet) (see [Install](#install)). The earlier finance-ledger build (SQLite store, source-adapter interface, and its templ + HTMX server) is shelved in git history, not deleted — it returns once a real backend is justified. See [`docs/adr/`](docs/adr/) for the decisions behind it and why.

@@ -3067,6 +3067,108 @@
     setNav();
   }
 
+  // ---------- version / update check ----------
+  // Live builds (tailnet or -local) ask the server whether a newer tally has
+  // been released. The server backs this with GET /api/version (see
+  // internal/web/version.go), which reads GitHub's latest release. When a newer
+  // tag exists the header version pill turns into a button that opens an upgrade
+  // popup with the exact command to run on the box over SSH. The static demo
+  // export has no such endpoint, so this whole block is inert there — boot()
+  // short-circuits it in demo mode and a failed fetch just leaves the plain
+  // version pill untouched. Mirrors hush control's version chip + update sheet.
+  const UPDATE_POLL_MS = 15 * 60 * 1000; // re-check every 15 min while the tab is open
+  const UPGRADE_CMD =
+    'curl -fsSL https://raw.githubusercontent.com/clarkbar-sys/tally/main/install.sh | sudo sh';
+  const RELEASES_BASE = 'https://github.com/clarkbar-sys/tally/releases';
+  let updateInfo = null;
+
+  async function checkVersion(force) {
+    const chip = document.getElementById('verchip');
+    if (!chip) return;
+    let v;
+    try {
+      const res = await fetch('api/version' + (force ? '?force=1' : ''), { cache: 'no-store' });
+      if (!res.ok) return;
+      v = await res.json();
+    } catch (e) {
+      return; // offline or no backend — keep the server-rendered version pill
+    }
+    updateInfo = v;
+    if (v.updateAvailable && v.latest) {
+      chip.classList.add('avail');
+      chip.setAttribute('role', 'button');
+      chip.setAttribute('tabindex', '0');
+      chip.title = `Update available: ${v.latest} — click to upgrade`;
+      chip.innerHTML =
+        '<span class="dot up" aria-hidden="true"></span>' +
+        `${esc(v.current)} → ${esc(v.latest)}`;
+    } else {
+      chip.classList.remove('avail');
+      chip.removeAttribute('role');
+      chip.removeAttribute('tabindex');
+      chip.title = v && v.current ? `running build — ${v.current}` : 'running build';
+    }
+  }
+
+  // openUpdatePopup renders the upgrade sheet: the new version, the running one,
+  // and a copyable command to re-run tally's installer on the box (SSH in, run as
+  // root — it fetches the latest release binary and restarts the service). Built
+  // as a native <dialog> so Esc and focus handling come for free.
+  function openUpdatePopup() {
+    const v = updateInfo;
+    if (!v || !v.updateAvailable || !v.latest) return;
+    document.getElementById('update-modal')?.remove();
+
+    const dlg = document.createElement('dialog');
+    dlg.id = 'update-modal';
+    dlg.className = 'update-modal';
+    dlg.innerHTML =
+      `<h2 class="um-title">Update available: ${esc(v.latest)}</h2>` +
+      `<p class="um-sub">You're running <b>${esc(v.current)}</b>. SSH into the box running tally and run this as root — it fetches the latest release binary and restarts the service. Safe to re-run.</p>` +
+      '<div class="cmdbox">' +
+      `<code id="upgrade-cmd">${esc(UPGRADE_CMD)}</code>` +
+      '<button class="btn ghost sm" type="button" id="upgrade-copy">Copy</button>' +
+      '</div>' +
+      '<div class="um-actions">' +
+      `<a class="btn ghost sm" href="${RELEASES_BASE}/tag/${encodeURIComponent(v.latest)}" target="_blank" rel="noopener noreferrer">Release notes</a>` +
+      '<button class="btn primary sm" type="button" id="upgrade-done">Done</button>' +
+      '</div>';
+    document.body.appendChild(dlg);
+
+    dlg.querySelector('#upgrade-copy').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      try {
+        await navigator.clipboard.writeText(UPGRADE_CMD);
+        btn.textContent = 'Copied';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+      } catch (err) {
+        // Clipboard blocked (no HTTPS/permission) — select the text so the user
+        // can copy it by hand.
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById('upgrade-cmd'));
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
+    dlg.querySelector('#upgrade-done').addEventListener('click', () => dlg.close());
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // backdrop
+    dlg.addEventListener('close', () => dlg.remove());
+    dlg.showModal();
+  }
+
+  function mountVersionCheck() {
+    const chip = document.getElementById('verchip');
+    if (!chip) return;
+    const open = () => { if (chip.classList.contains('avail')) openUpdatePopup(); };
+    chip.addEventListener('click', open);
+    chip.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+    checkVersion();
+    setInterval(checkVersion, UPDATE_POLL_MS);
+  }
+
   // ---------- boot ----------
   // load() is async in live mode (it reads IndexedDB), so boot awaits it before
   // the first render — otherwise the shell would paint empty and the saved
@@ -3077,6 +3179,7 @@
     await load();
     mountDemoBar();
     mountNav();
+    if (DEMO === false) mountVersionCheck();
     ticker();
     const mount = view();
     mount.addEventListener('submit', onSubmit);
