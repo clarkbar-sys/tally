@@ -1214,24 +1214,24 @@
   // Live (non-deleted) attachments on a notch — feeds the card/roll-up counts.
   const liveAttachments = (n) => (n.events || []).filter((e) => e.kind === 'attachment' && !e.deleted);
 
-  // parseQuery pulls `is:` tokens (e.g. "is:open", "is:closed", "is:all") out of
-  // a search string, GitHub-issue-search style, leaving the rest as free text.
-  // "closed" matches any non-open status, mirroring the open/closed split
-  // notches otherwise present to the user. "is:all" is not a status — it opts
-  // into showing sub-notches, which are rolled up under their parent by default.
+  // parseQuery pulls `is:` and `no:` tokens (e.g. "is:open", "is:closed",
+  // "no:parent") out of a search string, GitHub-issue-search style, leaving
+  // the rest as free text. "closed" matches any non-open status, mirroring
+  // the open/closed split notches otherwise present to the user. "no:parent"
+  // is not a status — it's the rollup filter that hides sub-notches, on by
+  // default (see DEFAULT_QUERY); dropping it from the search shows everything.
   function parseQuery(q) {
     const tokens = (q || '').trim().split(/\s+/).filter(Boolean);
     const statuses = [];
     const text = [];
-    let all = false;
+    let noParent = false;
     for (const t of tokens) {
-      const m = /^is:(open|closed|done|not_planned|all)$/i.exec(t);
-      if (!m) { text.push(t); continue; }
-      const v = m[1].toLowerCase();
-      if (v === 'all') all = true;
-      else statuses.push(v);
+      const is = /^is:(open|closed|done|not_planned)$/i.exec(t);
+      if (is) { statuses.push(is[1].toLowerCase()); continue; }
+      if (/^no:parent$/i.test(t)) { noParent = true; continue; }
+      text.push(t);
     }
-    return { statuses, text: text.join(' '), all };
+    return { statuses, text: text.join(' '), noParent };
   }
 
   function matchesStatus(n, statuses) {
@@ -1343,7 +1343,9 @@
   }
 
   // ---------- list view ----------
-  const DEFAULT_QUERY = 'is:open';
+  // "no:parent" hides sub-notches (rolled up under their parent) and is on by
+  // default; delete it from the search box to see every notch, top-level or not.
+  const DEFAULT_QUERY = 'is:open no:parent';
 
   function renderList() {
     view().innerHTML = `
@@ -1351,7 +1353,7 @@
       <section class="section">
         <h2><span>Notches</span></h2>
         <div class="section-body stack">
-          <label class="field"><span>Search</span><input class="input" id="search" type="search" value="${esc(DEFAULT_QUERY)}" placeholder="Filter by title, description, comment, or tag… (try is:open, is:closed, is:all)"/></label>
+          <label class="field"><span>Search</span><input class="input" id="search" type="search" value="${esc(DEFAULT_QUERY)}" placeholder="Filter by title, description, comment, or tag… (try is:open, is:closed, no:parent)"/></label>
           <div class="row" style="align-items:center; flex-wrap:nowrap">
             <div class="filter" id="filter" role="group" aria-label="Filter by status" style="flex:1 1 auto">
               <button type="button" data-status="open" aria-pressed="true"><span class="fdot" aria-hidden="true"></span>Open <span class="n">0</span></button>
@@ -1379,8 +1381,8 @@
     updateFilter(q);
     const list = document.getElementById('notch-list');
     if (!list) return;
-    const { all } = parseQuery(q);
-    const base = all ? sortByUpdated(notches) : topLevel();
+    const { noParent } = parseQuery(q);
+    const base = noParent ? topLevel() : sortByUpdated(notches);
     const rows = base.filter((n) => matches(n, q));
     if (rows.length === 0) {
       list.className = 'stack';
@@ -1395,8 +1397,9 @@
 
   // The Open/Closed tabs are a shortcut over the same `is:` search token: they
   // reflect the current query's status and, on click, rewrite it (keeping any
-  // free-text terms). Counts are of top-level notches, which is what the list
-  // shows by default (add "is:all" to the search to include sub-notches too).
+  // free-text terms and the "no:parent" rollup token). Counts are of
+  // top-level notches, which is what the list shows by default (delete
+  // "no:parent" from the search to include sub-notches too).
   function updateFilter(q) {
     const f = document.getElementById('filter');
     if (!f) return;
@@ -1414,8 +1417,8 @@
   function setStatusFilter(status) {
     const input = document.getElementById('search');
     if (!input) return;
-    const { text, all } = parseQuery(input.value);
-    input.value = `is:${status}` + (all ? ' is:all' : '') + (text ? ' ' + text : '');
+    const { text, noParent } = parseQuery(input.value);
+    input.value = `is:${status}` + (noParent ? ' no:parent' : '') + (text ? ' ' + text : '');
     renderCards(input.value);
   }
 
