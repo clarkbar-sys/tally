@@ -6,10 +6,22 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/clarkbar-sys/tally/internal/model"
 )
+
+// AnyVersion, passed as the base to SaveState, skips the compare-and-swap and
+// saves unconditionally (last-writer-wins). It is the base a client uses when it
+// has never synced — a first push / migration — where there is no prior version
+// to conflict against.
+const AnyVersion int64 = -1
+
+// ErrVersionConflict is returned by SaveState when the caller's base version no
+// longer matches the stored one: another writer bumped it in between. The caller
+// should re-read the current snapshot (and version) rather than overwrite it.
+var ErrVersionConflict = errors.New("store: state version conflict")
 
 // execer is the subset of *sql.Tx the snapshot insert helpers need, so they read
 // as plain row writers without carrying the whole transaction type.
@@ -99,37 +111,72 @@ func (s *Store) LoadState(ctx context.Context) (Snapshot, error) {
 	return snap, nil
 }
 
-// SaveState replaces all persisted state with snap, atomically. The client is the
-// source of truth in this build, so a save is a full overwrite: it clears every
-// table and re-inserts the snapshot, preserving the caller's timestamps rather
-// than stamping new ones. Foreign keys are deferred to commit so the insert order
-// within the transaction doesn't matter (a notch's parent, a proposal's app, a
-// record's source proposal can all be written in any order).
-func (s *Store) SaveState(ctx context.Context, snap Snapshot) error {
+// StateVersion returns the stored snapshot's monotonic version — 0 on a
+// never-saved database. It is bumped by every successful SaveState and handed to
+// the client (as an ETag) so the client can send it back for compare-and-swap.
+func (s *Store) StateVersion(ctx context.Context) (int64, error) {
+	var v int64
+	err := s.db.QueryRowContext(ctx, `SELECT version FROM state_version WHERE id = 1`).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("store: read state version: %w", err)
+	}
+	return v, nil
+}
+
+// SaveState replaces all persisted state with snap, atomically, and returns the
+// new snapshot version. The client is the source of truth in this build, so a
+// save is a full overwrite: it clears every table and re-inserts the snapshot,
+// preserving the caller's timestamps rather than stamping new ones. Foreign keys
+// are deferred to commit so the insert order within the transaction doesn't
+// matter (a notch's parent, a proposal's app, a record's source proposal can all
+// be written in any order).
+//
+// base is the version the caller last saw. If it is AnyVersion the save is
+// unconditional (a first push / migration); otherwise it must equal the stored
+// version — a compare-and-swap. A stale base returns ErrVersionConflict and
+// writes nothing, so a concurrent edit surfaces as a conflict instead of a silent
+// overwrite. On success the version is bumped by one and returned.
+func (s *Store) SaveState(ctx context.Context, snap Snapshot, base int64) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("store: save state: begin: %w", err)
+		return 0, fmt.Errorf("store: save state: begin: %w", err)
 	}
 	defer tx.Rollback()
+
+	// Read the current version inside the transaction so the compare-and-swap and
+	// the bump are atomic against a concurrent writer (single-writer WAL).
+	var current int64
+	if err := tx.QueryRowContext(ctx, `SELECT version FROM state_version WHERE id = 1`).Scan(&current); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("store: save state: read version: %w", err)
+		}
+		current = 0
+	}
+	if base != AnyVersion && base != current {
+		return current, ErrVersionConflict
+	}
 
 	// Defer FK checks to COMMIT: the snapshot is internally consistent but its
 	// rows can reference each other in any order (self-referencing notches, a
 	// record's proposal), so per-statement FK enforcement would be too strict.
 	if _, err := tx.ExecContext(ctx, `PRAGMA defer_foreign_keys = ON`); err != nil {
-		return fmt.Errorf("store: save state: defer fks: %w", err)
+		return 0, fmt.Errorf("store: save state: defer fks: %w", err)
 	}
 
 	for _, table := range []string{
 		"records", "notch_events", "proposal_events", "proposals", "notches", "labels", "apps",
 	} {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
-			return fmt.Errorf("store: save state: clear %s: %w", table, err)
+			return 0, fmt.Errorf("store: save state: clear %s: %w", table, err)
 		}
 	}
 
 	for _, a := range snap.Apps {
 		if err := insertApp(ctx, tx, a); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	for _, l := range snap.Labels {
@@ -137,35 +184,42 @@ func (s *Store) SaveState(ctx context.Context, snap Snapshot) error {
 			`INSERT INTO labels (name, color, bg, fg) VALUES (?, ?, ?, ?)`,
 			l.Name, l.Color, nullPtr(l.Bg), nullPtr(l.Fg),
 		); err != nil {
-			return fmt.Errorf("store: save state: insert label %q: %w", l.Name, err)
+			return 0, fmt.Errorf("store: save state: insert label %q: %w", l.Name, err)
 		}
 	}
 	for _, n := range snap.Notches {
 		if err := insertNotch(ctx, tx, n.Notch); err != nil {
-			return err
+			return 0, err
 		}
 		if err := insertEvents(ctx, tx, "notch_events", "notch_id", n.ID, n.Events); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	for _, p := range snap.Proposals {
 		if err := insertProposal(ctx, tx, p.Proposal); err != nil {
-			return err
+			return 0, err
 		}
 		if err := insertEvents(ctx, tx, "proposal_events", "proposal_id", p.ID, p.Events); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	for _, r := range snap.Records {
 		if err := insertRecord(ctx, tx, r); err != nil {
-			return err
+			return 0, err
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("store: save state: commit: %w", err)
+	next := current + 1
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE state_version SET version = ? WHERE id = 1`, next,
+	); err != nil {
+		return 0, fmt.Errorf("store: save state: bump version: %w", err)
 	}
-	return nil
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("store: save state: commit: %w", err)
+	}
+	return next, nil
 }
 
 func (s *Store) listLabels(ctx context.Context) ([]model.Label, error) {

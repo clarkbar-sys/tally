@@ -4,8 +4,11 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/clarkbar-sys/tally/internal/model"
@@ -125,7 +128,14 @@ func getState(w http.ResponseWriter, r *http.Request, st *store.Store) {
 		http.Error(w, "could not load state", http.StatusInternalServerError)
 		return
 	}
+	version, err := st.StateVersion(r.Context())
+	if err != nil {
+		log.Printf("web: state version: %v", err)
+		http.Error(w, "could not load state", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("ETag", etag(version))
 	if err := json.NewEncoder(w).Encode(snapshotToDTO(snap)); err != nil {
 		log.Printf("web: encode state: %v", err)
 	}
@@ -143,12 +153,72 @@ func putState(w http.ResponseWriter, r *http.Request, st *store.Store) {
 		http.Error(w, "invalid state payload", http.StatusBadRequest)
 		return
 	}
-	if err := st.SaveState(r.Context(), snap); err != nil {
+
+	// The client sends the version it last saw as If-Match, so the save is a
+	// compare-and-swap; a client that has never synced (a first push / migration)
+	// omits the header and saves unconditionally (store.AnyVersion).
+	base := store.AnyVersion
+	if v, ok := parseIfMatch(r.Header.Get("If-Match")); ok {
+		base = v
+	}
+
+	version, err := st.SaveState(r.Context(), snap, base)
+	if errors.Is(err, store.ErrVersionConflict) {
+		// Stale base: another writer moved the snapshot underneath this one. Don't
+		// clobber — hand back the current server snapshot (and its version) so the
+		// client can quarantine its dirty edits and adopt the hub's copy.
+		writeConflict(w, r, st, version)
+		return
+	}
+	if err != nil {
 		log.Printf("web: save state: %v", err)
 		http.Error(w, "could not save state", http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("ETag", etag(version))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// writeConflict answers a stale PUT with 409 plus the current server snapshot in
+// the GET body shape, so the client can adopt it as the live state without a
+// second round-trip. The ETag carries the version that snapshot is at.
+func writeConflict(w http.ResponseWriter, r *http.Request, st *store.Store, version int64) {
+	snap, err := st.LoadState(r.Context())
+	if err != nil {
+		log.Printf("web: load state (conflict): %v", err)
+		http.Error(w, "could not load state", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("ETag", etag(version))
+	w.WriteHeader(http.StatusConflict)
+	if err := json.NewEncoder(w).Encode(snapshotToDTO(snap)); err != nil {
+		log.Printf("web: encode state (conflict): %v", err)
+	}
+}
+
+// etag renders a snapshot version as a strong ETag (a quoted decimal), e.g.
+// version 5 → `"5"`.
+func etag(version int64) string {
+	return strconv.Quote(strconv.FormatInt(version, 10))
+}
+
+// parseIfMatch reads a version out of an If-Match header value, tolerating the
+// quoting and weak-validator prefix an entity-tag may carry (`"5"`, `W/"5"`, or a
+// bare `5`). A `*` (match-any) or an unparseable value yields ok=false, so the
+// caller falls back to an unconditional save.
+func parseIfMatch(raw string) (int64, bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" || s == "*" {
+		return 0, false
+	}
+	s = strings.TrimPrefix(s, "W/")
+	s = strings.Trim(s, `"`)
+	v, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 // ---- DTO <-> model conversion ----

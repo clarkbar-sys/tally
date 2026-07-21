@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -64,7 +65,7 @@ func TestSaveLoadStateRoundTrips(t *testing.T) {
 	ctx := context.Background()
 
 	want := sampleSnapshot()
-	if err := s.SaveState(ctx, want); err != nil {
+	if _, err := s.SaveState(ctx, want, AnyVersion); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 	got, err := s.LoadState(ctx)
@@ -81,13 +82,13 @@ func TestSaveStateReplacesPriorState(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
 
-	if err := s.SaveState(ctx, sampleSnapshot()); err != nil {
+	if _, err := s.SaveState(ctx, sampleSnapshot(), AnyVersion); err != nil {
 		t.Fatalf("SaveState first: %v", err)
 	}
 	// A second save with only the `you` app must wipe everything else.
 	next := Snapshot{Apps: []model.App{{ID: "you", Name: "You", Kind: "you",
 		Status: model.AppActive, InstalledAt: time.UnixMilli(1000).UTC()}}}
-	if err := s.SaveState(ctx, next); err != nil {
+	if _, err := s.SaveState(ctx, next, AnyVersion); err != nil {
 		t.Fatalf("SaveState second: %v", err)
 	}
 
@@ -112,6 +113,79 @@ func TestLoadStateEmptyIsZero(t *testing.T) {
 	if len(got.Apps) != 0 || len(got.Notches) != 0 || len(got.Labels) != 0 ||
 		len(got.Proposals) != 0 || len(got.Records) != 0 {
 		t.Fatalf("empty DB should load an empty snapshot, got %+v", got)
+	}
+}
+
+func TestStateVersionStartsAtZeroAndBumps(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+
+	if v, err := s.StateVersion(ctx); err != nil || v != 0 {
+		t.Fatalf("initial version = %d, err = %v; want 0, nil", v, err)
+	}
+
+	v, err := s.SaveState(ctx, sampleSnapshot(), AnyVersion)
+	if err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	if v != 1 {
+		t.Fatalf("returned version = %d, want 1", v)
+	}
+	if got, err := s.StateVersion(ctx); err != nil || got != 1 {
+		t.Fatalf("stored version = %d, err = %v; want 1, nil", got, err)
+	}
+}
+
+func TestSaveStateCASAcceptsMatchingBase(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+
+	v1, err := s.SaveState(ctx, sampleSnapshot(), AnyVersion)
+	if err != nil {
+		t.Fatalf("first SaveState: %v", err)
+	}
+	// A save whose base equals the current version is accepted and bumps by one.
+	v2, err := s.SaveState(ctx, sampleSnapshot(), v1)
+	if err != nil {
+		t.Fatalf("CAS save: %v", err)
+	}
+	if v2 != v1+1 {
+		t.Fatalf("version = %d, want %d", v2, v1+1)
+	}
+}
+
+func TestSaveStateCASRejectsStaleBase(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+
+	v1, err := s.SaveState(ctx, sampleSnapshot(), AnyVersion) // version -> 1
+	if err != nil {
+		t.Fatalf("first SaveState: %v", err)
+	}
+	if _, err := s.SaveState(ctx, sampleSnapshot(), v1); err != nil { // version -> 2
+		t.Fatalf("second SaveState: %v", err)
+	}
+
+	// A save still holding the now-stale base v1 must be rejected, leave the store
+	// untouched, and report the current version.
+	cur, err := s.SaveState(ctx, Snapshot{}, v1)
+	if !errors.Is(err, ErrVersionConflict) {
+		t.Fatalf("stale save err = %v, want ErrVersionConflict", err)
+	}
+	if cur != v1+1 {
+		t.Fatalf("conflict reported version = %d, want %d", cur, v1+1)
+	}
+	// The rejected save wrote nothing: the version is unchanged and the earlier
+	// snapshot's rows are intact.
+	if got, err := s.StateVersion(ctx); err != nil || got != v1+1 {
+		t.Fatalf("version after conflict = %d, err = %v; want %d", got, err, v1+1)
+	}
+	snap, err := s.LoadState(ctx)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if len(snap.Notches) == 0 {
+		t.Fatalf("conflict clobbered state: notches empty")
 	}
 }
 
