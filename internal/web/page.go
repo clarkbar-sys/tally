@@ -21,7 +21,8 @@ func versionString() string { return version.Version }
 // static/app.js reads to pick its storage backend. The static export (GitHub
 // Pages / PR preview) renders "demo" — in-memory only, wiped on reload — while
 // the build tally serves on the tailnet renders "live", persisting to the
-// browser's IndexedDB. See AppPage and the "storage mode" note in app.js.
+// server's SQLite store via /api/state. See AppPage and the "storage mode" note
+// in app.js.
 func pageMode(demo bool) string {
 	if demo {
 		return "demo"

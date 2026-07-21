@@ -29,7 +29,7 @@ func getFrom(h http.Handler, path string) *httptest.ResponseRecorder {
 }
 
 func TestVersionEndpointReportsUpdate(t *testing.T) {
-	h := handler(stubChecker("v1.0.0", "v1.1.0", true, nil))
+	h := handler(stubChecker("v1.0.0", "v1.1.0", true, nil), nil)
 	rec := getFrom(h, "/api/version")
 
 	if rec.Code != http.StatusOK {
@@ -48,7 +48,7 @@ func TestVersionEndpointReportsUpdate(t *testing.T) {
 }
 
 func TestVersionEndpointDegradesOnError(t *testing.T) {
-	h := handler(stubChecker("v1.0.0", "", false, errors.New("boom")))
+	h := handler(stubChecker("v1.0.0", "", false, errors.New("boom")), nil)
 	rec := getFrom(h, "/api/version")
 
 	if rec.Code != http.StatusOK {

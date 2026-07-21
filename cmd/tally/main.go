@@ -5,8 +5,8 @@
 // It joins the tailnet as its own node via tsnet (Hostname "tally") and serves
 // over that identity — so tally is reachable at tally.<tailnet>.ts.net with an
 // access domain separate from the box it runs on (the day-one constraint from
-// #3). The served page is currently the hello-world design shell (theme +
-// widget gallery); the data layer is being reworked.
+// #3). The served page is the live app, persisting to a server-side SQLite store
+// (internal/store) at -db / $TALLY_DB — shared across every device on the tailnet.
 //
 // With -export DIR it instead renders the UI to a self-contained static site in
 // DIR and exits, without touching the tailnet — the build step behind the
@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -29,6 +30,7 @@ import (
 
 	"tailscale.com/tsnet"
 
+	"github.com/clarkbar-sys/tally/internal/store"
 	"github.com/clarkbar-sys/tally/internal/version"
 	"github.com/clarkbar-sys/tally/internal/web"
 )
@@ -40,6 +42,7 @@ func main() {
 	exportDir := flag.String("export", "", "render the UI to this directory as a static site and exit (no tailnet)")
 	local := flag.Bool("local", false, "serve the app on a local address instead of the tailnet — for trying tally in a browser")
 	addr := flag.String("addr", "127.0.0.1:8080", "address to bind in -local mode")
+	dbPath := flag.String("db", "", "path to the SQLite database (default: $TALLY_DB, else /var/lib/tally/tally.db when served, ./tally.db in -local mode)")
 	flag.Parse()
 
 	if *exportDir != "" {
@@ -49,29 +52,58 @@ func main() {
 		return
 	}
 	if *local {
-		if err := runLocal(*addr); err != nil {
+		if err := runLocal(*addr, dbFile(*dbPath, "tally.db")); err != nil {
 			log.Fatal(err)
 		}
 		return
 	}
-	if err := runServe(); err != nil {
+	if err := runServe(dbFile(*dbPath, "/var/lib/tally/tally.db")); err != nil {
 		log.Fatal(err)
 	}
 }
 
-// runLocal serves the app shell over plain HTTP on addr, without the tailnet —
-// the quickest way to open tally in a browser. The app is local-first: all data
-// lives in the browser's IndexedDB, so this only serves static files. Ctrl-C
-// shuts it down.
-func runLocal(addr string) error {
+// dbFile resolves the database path: the -db flag wins, then $TALLY_DB, then the
+// mode's default. The live build always persists to this file — that is the
+// server-side store that replaces the old per-browser IndexedDB.
+func dbFile(flagVal, def string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return env("TALLY_DB", def)
+}
+
+// openStore opens (creating if needed) the SQLite store at path, making its
+// parent directory first so a default like /var/lib/tally/tally.db works on a
+// fresh box.
+func openStore(path string) (*store.Store, error) {
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, fmt.Errorf("create db dir %s: %w", dir, err)
+		}
+	}
+	return store.Open(context.Background(), path)
+}
+
+// runLocal serves the app over plain HTTP on addr, without the tailnet — the
+// quickest way to open tally in a browser. It runs the live build, persisting to
+// the SQLite store at dbPath (so a reload keeps your notches), and serves the
+// static assets. Ctrl-C shuts it down.
+func runLocal(addr, dbPath string) error {
 	log.Printf("starting %s", version.String())
+
+	st, err := openStore(dbPath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           web.Handler(),
+		Handler:           web.Handler(st),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		log.Printf("serving http://%s (local mode) — data stays in your browser", addr)
+		log.Printf("serving http://%s (local mode) — data persists to %s", addr, dbPath)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("serve: %v", err)
 		}
@@ -97,7 +129,7 @@ func runExport(dir string) error {
 }
 
 // runServe serves the UI on the tailnet.
-func runServe() error {
+func runServe(dbPath string) error {
 	log.Printf("starting %s", version.String())
 
 	hostname := env("TALLY_HOSTNAME", "tally")
@@ -111,6 +143,13 @@ func runServe() error {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return err
 	}
+
+	st, err := openStore(dbPath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	log.Printf("persisting to %s", dbPath)
 
 	ts := &tsnet.Server{
 		Hostname: hostname,
@@ -128,7 +167,7 @@ func runServe() error {
 	log.Printf("serving %s on the tailnet as %q", scheme, hostname)
 
 	srv := &http.Server{
-		Handler:           web.Handler(),
+		Handler:           web.Handler(st),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

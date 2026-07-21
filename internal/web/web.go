@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package web serves tally's local-first app shell and its static assets. The
-// app itself (data model, persistence, all interaction) runs client-side in
-// static/app.js against browser IndexedDB — there is no server-side data layer.
-// This package renders the static shell ([AppPage]) and serves static/, and the
-// same rendering feeds a static export ([Export]) so GitHub Pages publishes the
-// whole app. The widget gallery ([GalleryPage]) is kept at /design as a living
-// style reference.
+// Package web serves tally's app shell, its static assets, and — in the live
+// build — the data endpoints that back it. The app itself (data model, all
+// interaction) runs client-side in static/app.js; in the live build it persists
+// through GET/PUT /api/state to the server's SQLite store (see state.go), while
+// the demo build (the GitHub Pages / PR-preview static export) runs in memory
+// only and touches no server. This package renders the static shell ([AppPage])
+// and serves static/, and the same rendering feeds a static export ([Export]) so
+// GitHub Pages publishes the whole app. The widget gallery ([GalleryPage]) is
+// kept at /design as a living style reference.
 package web
 
 import (
@@ -19,22 +21,25 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/clarkbar-sys/tally/internal/store"
 )
 
 //go:embed static
 var staticFS embed.FS
 
 // Handler returns the tally HTTP handler for the live build. It serves the app
-// shell, static assets, and one small data endpoint — GET /api/version, which
-// tells the header chip whether a newer release exists (see version.go). The
-// notch data stays client-side; there is no server-side data layer.
-func Handler() http.Handler {
-	return handler(newVersionChecker())
+// shell, static assets, the version check (GET /api/version, see version.go), and
+// the state endpoints (GET/PUT /api/state) that persist the app to st. st is the
+// live build's server-side datastore; it must be non-nil here.
+func Handler(st *store.Store) http.Handler {
+	return handler(newVersionChecker(), st)
 }
 
-// handler builds the mux with an explicit version checker, so tests can inject a
-// stub instead of reaching GitHub.
-func handler(vc *versionChecker) http.Handler {
+// handler builds the mux with an explicit version checker and store, so tests can
+// inject a stub checker and either a real store or nil (the shell and static
+// routes work without one; the state endpoints are simply not mounted).
+func handler(vc *versionChecker, st *store.Store) http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		// staticFS is embedded at build time; a missing subdir is a build bug.
@@ -48,8 +53,15 @@ func handler(vc *versionChecker) http.Handler {
 	// The update check lives only on the served build: the static demo export
 	// (GitHub Pages) never registers this route, so it never offers an upgrade.
 	mux.HandleFunc("GET /api/version", vc.handle)
-	// Served (tailnet or -local): the live build. app.js persists to IndexedDB,
-	// so a reload keeps your notches — unlike the demo-mode static export.
+	// The live build persists the app to the server's SQLite store: app.js GETs
+	// the snapshot on boot and PUTs it back after each edit. The demo export has
+	// no store, makes no such calls, and never mounts these routes.
+	if st != nil {
+		mux.HandleFunc("/api/state", stateHandler(st))
+	}
+	// Served (tailnet or -local): the live build. app.js persists to the server
+	// DB, so a reload — or a second device on the tailnet — sees the same data,
+	// unlike the demo-mode static export.
 	mux.HandleFunc("GET /{$}", page(AppPage(false)))
 	return mux
 }

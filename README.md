@@ -7,7 +7,7 @@ A generic container for notes, checklists, and reminders — closer to a Trello 
 
 A [tally stick](https://en.wikipedia.org/wiki/Tally_stick): notched wood, split so both parties hold half the record — annotation is the point, aggregation (of anything, finance included) is just one input to it.
 
-**v1 is local-first**: a client-only app, no server, no auth, no sync yet. See [epic #1](https://github.com/clarkbar-sys/tally/issues/1) for the full pivot writeup and what's deferred to later (finance sync via SimpleFIN, auth).
+**v1 is local-first**: a single-user app with no auth and no third-party sync yet — the tailnet is its access boundary. Served on the tailnet it persists to a server-side SQLite database (shared across your devices); the browser demo has no server at all. See [epic #1](https://github.com/clarkbar-sys/tally/issues/1) for the full pivot writeup and what's deferred to later (finance sync via SimpleFIN, auth).
 
 ## Install
 
@@ -30,7 +30,9 @@ build-from-a-checkout path ([`deploy/install.sh`](deploy/install.sh)), and how
 the tailnet ACL becomes tally's access boundary.
 
 Just want to try it in a browser with no tailnet? Use `-local` (see
-[Development](#development) below) — data stays in your browser.
+[Development](#development) below) — it runs the same live build against a local
+SQLite file. Or open the zero-setup [browser demo](https://clarkbar-sys.github.io/tally/),
+which keeps nothing.
 
 ### Staying up to date
 
@@ -45,7 +47,7 @@ no server to check and never offers an upgrade.
 
 ## Stack
 
-Go + [templ](https://templ.guide/) render the static app shell; the app itself is vanilla JavaScript over the browser's [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) — client-only, no server. The Go binary also serves that shell on the tailnet via [tsnet](https://tailscale.com/kb/1244/tsnet) (see [Install](#install)). The earlier finance-ledger build (SQLite store, source-adapter interface, and its templ + HTMX server) is shelved in git history, not deleted — it returns once a real backend is justified. See [`docs/adr/`](docs/adr/) for the decisions behind it and why.
+Go + [templ](https://templ.guide/) render the app shell; the app itself is vanilla JavaScript. The Go binary serves that shell on the tailnet via [tsnet](https://tailscale.com/kb/1244/tsnet) (see [Install](#install)) and persists your data server-side in [SQLite](https://sqlite.org/) (`internal/store`, [ADR-0002](docs/adr/0002-datastore.md)): the client mirrors its state to `GET`/`PUT /api/state`, so a reload — or a different device on the tailnet — sees the same data. The [browser demo](https://clarkbar-sys.github.io/tally/) is the same JavaScript with no server behind it — an in-memory, reload-resets build for previewing only. See [`docs/adr/`](docs/adr/) for the decisions behind it and why.
 
 ## Development
 
@@ -56,8 +58,8 @@ make hooks   # enable the pre-push gate (once per clone)
 make ci      # gofmt, vet, build, test, gitleaks
 ```
 
-Run the app locally — data stays in your browser via IndexedDB, nothing is
-served but static files:
+Run the app locally — the live build, persisting to a SQLite file (`./tally.db`
+by default; override with `-db` or `$TALLY_DB`):
 
 ```sh
 go run ./cmd/tally -local   # http://127.0.0.1:8080
