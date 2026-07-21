@@ -407,6 +407,47 @@
     white-space: nowrap;
   }
   .version .dot{ width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 6px color-mix(in srgb, var(--good) 60%, transparent); }
+  /* When the server reports a newer release the pill becomes a button: accent
+     border, an "update" dot, and a hover cue. Set by app.js (checkVersion). */
+  .version.avail{
+    cursor: pointer; color: var(--ink);
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--line-strong));
+  }
+  .version.avail:hover{ border-color: var(--accent); color: var(--accent-strong); }
+  .version.avail:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  .version.avail .dot.up{
+    background: var(--accent); box-shadow: 0 0 8px 0 var(--accent-glow-hot);
+    animation: verPulse 2s ease-in-out infinite;
+  }
+  @keyframes verPulse{ 0%,100%{ opacity: 1; } 50%{ opacity: .45; } }
+  @media (prefers-reduced-motion: reduce){ .version.avail .dot.up{ animation: none; } }
+
+  /* ---------- update popup ---------- */
+  /* The upgrade sheet opened from the version pill: the new tag, the running
+     build, and a copyable command to re-run the installer on the box over SSH.
+     A native <dialog>, so Esc and focus handling are free. */
+  .update-modal{
+    width: min(92vw, 460px); padding: var(--sp-5);
+    border: 1px solid var(--line-strong); border-radius: var(--r);
+    background: var(--bg-raised); color: var(--ink);
+    box-shadow: 0 24px 60px -18px rgba(0,0,0,.6);
+  }
+  .update-modal::backdrop{ background: rgba(0,0,0,.5); backdrop-filter: blur(2px); }
+  .um-title{ margin: 0 0 var(--sp-2); font-size: 18px; }
+  .um-sub{ margin: 0 0 var(--sp-4); font-size: 13px; line-height: 1.5; color: var(--ink-dim); }
+  .um-sub b{ color: var(--ink); }
+  .cmdbox{
+    display: flex; align-items: center; gap: var(--sp-2);
+    padding: 10px 12px; margin-bottom: var(--sp-4);
+    border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+    background: var(--bg);
+  }
+  .cmdbox code{
+    flex: 1 1 auto; min-width: 0; overflow-x: auto; white-space: nowrap;
+    font-size: 12.5px; color: var(--ink); scrollbar-width: thin;
+  }
+  .cmdbox .btn{ flex: 0 0 auto; }
+  .um-actions{ display: flex; justify-content: flex-end; gap: var(--sp-2); }
   .gh-link{
     display: inline-flex; align-items: center; justify-content: center;
     width: 28px; height: 28px; border-radius: var(--r-sm);
