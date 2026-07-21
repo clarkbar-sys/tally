@@ -12,31 +12,49 @@ identity, HTTPS — works before the ledger is built on top of it.
 
 ## One-line install
 
-The root [`install.sh`](../install.sh) is a bootstrap: it clones (or updates)
-this repo onto the box and then runs `deploy/install.sh` for you.
+The root [`install.sh`](../install.sh) fetches the **prebuilt release binary**
+and the systemd unit straight from GitHub and installs them — no Go toolchain,
+no git clone required on the box (the same shape as the sibling
+[`hush`](https://github.com/clarkbar-sys/hush) installer). It runs tally under a
+dedicated, unprivileged `tally` system user.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/clarkbar-sys/tally/main/install.sh | sudo sh
 ```
 
-**Caveat while this repo is private:** an anonymous `curl` of a private
-GitHub repo returns 404, so the one-liner above won't work as-is — the fetch
-of `install.sh` itself needs authentication. Until the repo is public, either:
+It installs the binary to `/usr/local/bin/tally`, the unit to
+`/etc/systemd/system/tally.service`, and an editable `/etc/tally/tally.env`
+(written once, never clobbered). Safe to re-run any time — re-running upgrades
+the binary to the latest release and reinstalls the unit.
 
-- clone the repo yourself and run `sudo sh deploy/install.sh` directly (see
-  below), or
-- fetch `install.sh` with an authenticated request (e.g. a token in the
-  `Authorization` header, or `gh api`) and pipe that into `sudo sh`.
+On immutable-root distros (SteamOS, Fedora Silverblue/Kinoite) `/usr` is
+read-only; the installer falls back to a writable bin dir automatically and
+rewrites the unit's `ExecStart` to match. Force a location with
+`TALLY_BIN_DIR=/some/dir`.
 
-It becomes a clean anonymous `curl | sudo sh` one-liner once the repo goes
-public. It's safe to re-run any time to pull and install the latest `main`.
+**Caveat while this repo is private:** anonymous fetches of a private GitHub
+repo (both the raw `install.sh` and the release binary) return 404, so the
+one-liner won't work as-is until the repo is public. Until then, build and
+install from a checkout instead:
+
+```sh
+git clone git@github.com:clarkbar-sys/tally.git && cd tally
+sudo sh deploy/install.sh
+```
 
 ## Prerequisites
+
+The one-line installer above needs only a Linux box with `curl` and `systemd`
+— no checkout, no Go toolchain. The `deploy/install.sh` path (build from a
+checkout) additionally needs:
 
 1. A checkout of this repo on the box.
 2. A Go toolchain on the box (to build from source), **or** a prebuilt `tally`
    binary at the repo root. Note: the tsnet dependency currently requires a
    recent Go toolchain (see `go.mod`).
+
+Both paths need:
+
 3. **A tagged Tailscale auth key.** In the admin console, create an auth key
    tagged `tag:tally`. Tagging is what makes tally a distinct identity in the
    tailnet — and what lets ACLs deny the family surface (see below).
@@ -59,7 +77,12 @@ Editing `deploy/tally.service` directly instead doesn't stick: re-running
 there is silently lost on the next install/upgrade. The env file is the
 persistent override point.
 
-## Install
+## Install from a checkout (build from source)
+
+When you already have a checkout on the box — or the repo is still private, so
+the one-liner can't fetch a release — use `deploy/install.sh` instead. It builds
+`tally` from source (or uses a prebuilt `./tally` at the repo root) rather than
+downloading a release binary; everything else matches the one-liner.
 
 ```sh
 sudo sh deploy/install.sh
