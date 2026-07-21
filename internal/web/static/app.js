@@ -8,8 +8,9 @@
 // lists, checked off inline), tags/labels, sub-notches (parent/child like
 // GitHub sub-issues), and a running thread of comments for the paper trail.
 //
-// DEMO MODE: for now tally runs entirely in memory — no IndexedDB, no server,
-// no network, no persistence of any kind. Edits stick as you navigate and
+// DEMO MODE: the static export runs entirely in memory — no server, no network,
+// no persistence of any kind. (The served build persists to the server's SQLite
+// database instead; see the "storage" note below.) Edits stick as you navigate and
 // re-render (the `notches` array below is the one source of truth), but a
 // reload (F5) starts fresh from the seed data. A demo banner and Reset button
 // make that ephemerality obvious. This keeps the app instantly runnable on
@@ -96,8 +97,10 @@
   //           Reset button) returns to exactly that seed. Perfect for a throwaway
   //           preview where you want the same starting point every time.
   //   live  — the build tally serves on the tailnet. After each edit the whole
-  //           state is mirrored to the browser's IndexedDB (see saveState), and
-  //           boot rehydrates it (see load), so your notches survive a reload.
+  //           state is PUT to the server's SQLite database (see saveState), and
+  //           boot rehydrates it with a GET (see load), so your notches survive a
+  //           reload *and* are shared across every device on the tailnet — it is
+  //           the server DB, not per-browser storage.
   //
   // The server picks the mode via the <html data-mode> attribute (see
   // internal/web/app.templ). We read it once here and default to demo when it is
@@ -105,7 +108,7 @@
   const DEMO = (document.documentElement.dataset.mode || 'demo') !== 'live';
 
   // ---------- state ----------
-  let notches = []; // in-memory source of truth, mirrored to IndexedDB
+  let notches = []; // in-memory source of truth, mirrored to the server (live mode)
   let labels = []; // global label registry — see the LABELS note up top
   // TALLIES: a tally is to a notch what a pull request is to an issue — a
   // reviewable *proposal* that, once merged, applies a batch of typed data
@@ -114,9 +117,9 @@
   // providers (music, bank, calendar) surface their data the same way — as a
   // tally authored by that provider, waiting to be accepted or declined — so the
   // user, not the provider, decides what enters the system. See the TALLIES note
-  // and mergeTally() below. `records` is the demo stand-in for the durable data
-  // substrate (SQLite/IndexedDB tables); a merged tally writes its rows there,
-  // each stamped with the tally it came from (`talliedFrom`) for provenance.
+  // and mergeTally() below. `records` is the applied data substrate (persisted to
+  // the server's SQLite `records` table in live mode); a merged tally writes its
+  // rows there, each stamped with the tally it came from (`talliedFrom`) for provenance.
   //   Tally { id, title, body, author, status:'open'|'merged'|'declined',
   //           changes:[Change], linkedNotches:[notchId], events:[Event],
   //           createdAt, updatedAt, mergedAt }
@@ -129,7 +132,7 @@
   //          | { op:'check-task', notchId, index, text } // modify: tick a task
   //   Record { id, dataset, summary, source, at, talliedFrom }
   let tallies = []; // proposals — parallel to `notches`
-  let records = []; // the applied data substrate (SQLite/IndexedDB stand-in)
+  let records = []; // the applied data substrate (server SQLite `records` in live mode)
   // APPLICATIONS: an application is a registered non-human actor. It has one
   // write verb — *author a tally* — so everything it proposes still passes the
   // merge gate (the user, not the app, decides what lands). Reading is the new
@@ -148,75 +151,52 @@
   const byId = (id) => notches.find((n) => n.id === id);
 
   // ---------- durable store (live mode) ----------
-  // In live mode the whole app state is a single IndexedDB record. We keep the
-  // in-memory arrays as the source of truth exactly as in demo mode and, after
-  // each edit, mirror a snapshot of them into that one record; boot reads it back.
-  // A snapshot (not a row-per-notch schema) keeps the seam tiny — persistence is
-  // a background copy of state that already lives in memory, so none of the CRUD
-  // code below has to change. All of it is inert in demo mode (DEMO short-circuits
-  // saveState/scheduleSave), so the static export never touches browser storage.
-  const DB_NAME = 'tally';
-  const DB_VERSION = 1;
-  const STORE = 'state';
-  const STATE_KEY = 'current';
-  const SNAPSHOT_VERSION = 1;
+  // In live mode the whole app state persists to the tally server's SQLite
+  // database over one endpoint: PUT /api/state writes the current snapshot, GET
+  // /api/state reads it back on boot. We keep the in-memory arrays as the source
+  // of truth exactly as in demo mode and, after each edit, mirror a snapshot of
+  // them to the server; a snapshot (not per-resource requests) keeps the seam
+  // tiny — persistence is a background copy of state that already lives in memory,
+  // so none of the CRUD code below has to change. All of it is inert in demo mode
+  // (DEMO short-circuits saveState/scheduleSave), so the static export makes no
+  // network calls at all.
+  const API_STATE = '/api/state';
 
-  function idbOpen() {
-    return new Promise((resolve, reject) => {
-      let req;
-      try { req = indexedDB.open(DB_NAME, DB_VERSION); }
-      catch (e) { reject(e); return; }
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error || new Error('indexedDB open failed'));
-    });
+  // buildState is the wire snapshot: the same in-memory arrays, sent verbatim.
+  // The server persists each into its table (see internal/web/state.go) and hands
+  // the same shape back on GET.
+  function buildState() {
+    return { labels, apps, notches, tallies, records };
   }
 
-  // snapshot is the durable shape: a version tag plus each state array. Kept flat
-  // so a future migration can read `v` and adapt older records in place.
-  function snapshot() {
-    return { v: SNAPSHOT_VERSION, labels, apps, notches, tallies, records };
-  }
-
-  // saveState writes the current snapshot over the single state record. Best
-  // effort: a storage failure (quota, private-mode block) is logged, never fatal —
-  // the in-memory copy keeps working, you just lose durability for that edit.
-  async function saveState() {
+  // saveState PUTs the current snapshot to the server. Best effort: a failure
+  // (server down, offline) is logged, never fatal — the in-memory copy keeps
+  // working, you just lose durability for that edit until the next successful
+  // save. `keepalive` is set only for the page-hide flush, where the request must
+  // outlive the unloading document.
+  async function saveState(opts) {
     if (DEMO) return;
-    let db;
     try {
-      db = await idbOpen();
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error || new Error('write failed'));
-        tx.onabort = () => reject(tx.error || new Error('write aborted'));
-        tx.objectStore(STORE).put(snapshot(), STATE_KEY);
+      const res = await fetch(API_STATE, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildState()),
+        keepalive: !!(opts && opts.keepalive),
       });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
     } catch (e) {
       console.warn('tally: could not save state', e);
-    } finally {
-      if (db) db.close();
     }
   }
 
-  // loadState reads the stored snapshot, or null on first run / any read error.
+  // loadState GETs the persisted snapshot. Throws on any transport/HTTP error so
+  // load() can tell "reachable, empty server" (a fresh install) apart from
+  // "couldn't reach the server" and avoid clobbering real data on a transient
+  // failure.
   async function loadState() {
-    let db;
-    try {
-      db = await idbOpen();
-      return await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE, 'readonly');
-        const rq = tx.objectStore(STORE).get(STATE_KEY);
-        rq.onsuccess = () => resolve(rq.result || null);
-        rq.onerror = () => reject(rq.error || new Error('read failed'));
-      });
-    } finally {
-      if (db) db.close();
-    }
+    const res = await fetch(API_STATE, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
   }
 
   // scheduleSave coalesces the bursts of persist() calls a single action fires
@@ -228,9 +208,10 @@
     saveTimer = setTimeout(saveState, 200);
   }
   // A pending debounced write would be lost if the tab closes first, so flush it
-  // when the page is hidden — the last reliable moment before unload.
+  // when the page is hidden — the last reliable moment before unload. keepalive
+  // lets the PUT complete after the document goes away.
   if (!DEMO && typeof window !== 'undefined') {
-    window.addEventListener('pagehide', () => { clearTimeout(saveTimer); saveState(); });
+    window.addEventListener('pagehide', () => { clearTimeout(saveTimer); saveState({ keepalive: true }); });
   }
 
   const PALETTE = ['red', 'amber', 'green', 'blue', 'pink', 'cyan'];
@@ -547,27 +528,36 @@
   }
 
   // load populates the state arrays for this session. In demo mode that's always
-  // the fixtures. In live mode it's whatever IndexedDB holds; a first run (or an
-  // unreadable store) starts from a clean, real install — no demo fixtures, just
-  // the built-in `you` actor — and persists it so the next reload restores it.
+  // the fixtures. In live mode it's whatever the server holds, fetched over
+  // GET /api/state:
+  //   - a reachable server with data → hydrate from it;
+  //   - a reachable but empty server (fresh install) → seed a clean, real install
+  //     (no demo fixtures, just the built-in `you` actor) and PUT it so the next
+  //     load restores it;
+  //   - an unreachable server (offline / error) → start clean in memory but do
+  //     NOT save, so a transient failure can't overwrite real server data with an
+  //     empty snapshot.
   async function load() {
     if (DEMO) { seedDemo(); return; }
-    let saved = null;
+    let saved;
     try { saved = await loadState(); }
-    catch (e) { console.warn('tally: could not load saved state, starting fresh', e); }
-    if (saved && Array.isArray(saved.notches)) {
+    catch (e) { console.warn('tally: could not load saved state from the server', e); }
+
+    const fresh = () => { labels = []; apps = [youApp()]; notches = []; tallies = []; records = []; };
+
+    if (saved && Array.isArray(saved.apps) && saved.apps.length) {
       labels = saved.labels || [];
-      apps = (saved.apps && saved.apps.length) ? saved.apps : [youApp()];
-      notches = saved.notches;
+      apps = saved.apps;
+      notches = saved.notches || [];
       tallies = saved.tallies || [];
       records = saved.records || [];
-    } else {
-      labels = [];
-      apps = [youApp()];
-      notches = [];
-      tallies = [];
-      records = [];
+    } else if (saved) {
+      // Reachable, empty server: seed the built-in actor and persist it.
+      fresh();
       await saveState();
+    } else {
+      // Unreachable server: clean in-memory session, no save (see above).
+      fresh();
     }
   }
   // persist records an edit. In demo mode there is nothing to write to — the
@@ -3199,10 +3189,10 @@
   }
 
   // ---------- boot ----------
-  // load() is async in live mode (it reads IndexedDB), so boot awaits it before
+  // load() is async in live mode (it GETs /api/state), so boot awaits it before
   // the first render — otherwise the shell would paint empty and the saved
   // notches would pop in a frame later. Theme init and the chrome that doesn't
-  // depend on state run first so the page never looks blank while the store opens.
+  // depend on state run first so the page never looks blank while the fetch runs.
   async function boot() {
     initTheme();
     await load();

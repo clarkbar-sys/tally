@@ -134,6 +134,19 @@ type Event struct {
 	Payload json.RawMessage
 }
 
+// Label is one entry in the global label registry. Labels are not owned by any
+// one notch: a notch's Tags are label names, joined to this registry by name, so
+// coloring "bug" once colors it everywhere it appears. Color is the auto-assigned
+// palette swatch (a theme-aware CSS name); Bg/Fg are set only once a color picker
+// is touched and then override the palette with a fixed hex pair. They are
+// pointers so an untouched label round-trips as JSON null, not "".
+type Label struct {
+	Name  string
+	Color string
+	Bg    *string
+	Fg    *string
+}
+
 // Notch is the generic issue-like container that is tally's substrate: a title,
 // a Markdown body (tasks live inline as `- [ ]` lists), tags, and a parent for
 // nesting. Its timeline is a separate append-only event log ([Event]).

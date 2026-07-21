@@ -14,7 +14,10 @@ import (
 
 func get(path string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
-	Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	// These shell/static/version tests don't touch persistence, so a nil store is
+	// fine — the /api/state routes just aren't mounted. State endpoints have their
+	// own coverage in state_test.go with a real store.
+	Handler(nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 	return rec
 }
 
@@ -36,7 +39,7 @@ func TestRootRendersAppShell(t *testing.T) {
 	body := rec.Body.String()
 	// The shell carries the version, mounts the client app, and loads app.js.
 	// Served pages run the live build (data-mode="live"), so app.js persists to
-	// IndexedDB rather than running in demo mode.
+	// the server via /api/state rather than running in demo mode.
 	for _, want := range []string{versionString(), `id="view"`, "static/app.js", "local-first", `data-mode="live"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("app shell missing %q", want)
