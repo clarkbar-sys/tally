@@ -104,10 +104,11 @@
   //           Reset button) returns to exactly that seed. Perfect for a throwaway
   //           preview where you want the same starting point every time.
   //   live  — the build tally serves on the tailnet. After each edit the whole
-  //           state is PUT to the server's SQLite database (see saveState), and
-  //           boot rehydrates it with a GET (see load), so your notches survive a
-  //           reload *and* are shared across every device on the tailnet — it is
-  //           the server DB, not per-browser storage.
+  //           state is written to a local IndexedDB mirror and, when the hub is
+  //           reachable, pushed to the tally node's SQLite over PUT /api/state
+  //           (see saveState); boot hydrates from IndexedDB first and then
+  //           reconciles with a GET (see load). So your notches survive a reload
+  //           and offline use *and* are shared across every device on the tailnet.
   //
   // The server picks the mode via the <html data-mode> attribute (see
   // internal/web/app.templ). We read it once here and default to demo when it is
@@ -115,7 +116,7 @@
   const DEMO = (document.documentElement.dataset.mode || 'demo') !== 'live';
 
   // ---------- state ----------
-  let notches = []; // in-memory source of truth, mirrored to the server (live mode)
+  let notches = []; // in-memory source of truth, mirrored to IndexedDB + hub (live mode)
   let labels = []; // global label registry — see the LABELS note up top
   // TALLIES: a tally is to a notch what a pull request is to an issue — a
   // reviewable *proposal* that, once merged, applies a batch of typed data
@@ -157,53 +158,160 @@
   const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const byId = (id) => notches.find((n) => n.id === id);
 
-  // ---------- durable store (live mode) ----------
-  // In live mode the whole app state persists to the tally server's SQLite
-  // database over one endpoint: PUT /api/state writes the current snapshot, GET
-  // /api/state reads it back on boot. We keep the in-memory arrays as the source
-  // of truth exactly as in demo mode and, after each edit, mirror a snapshot of
-  // them to the server; a snapshot (not per-resource requests) keeps the seam
-  // tiny — persistence is a background copy of state that already lives in memory,
-  // so none of the CRUD code below has to change. All of it is inert in demo mode
-  // (DEMO short-circuits saveState/scheduleSave), so the static export makes no
-  // network calls at all.
+  // ---------- durable store: local IndexedDB + hub sync (live mode) ----------
+  // Two tiers, so you can work fully offline (e.g. on a plane) and never lose an
+  // edit to a flaky connection (#122):
+  //
+  //   IndexedDB — a per-device local mirror. Every edit writes here first, so a
+  //     reload always finds your latest work whether or not there's a network.
+  //     This is what makes the app usable with no connectivity at all.
+  //   GET/PUT /api/state — the shared hub (the tally node's SQLite, see
+  //     internal/web/state.go). When reachable, the local snapshot is pushed up so
+  //     a second device on the tailnet sees the same data; on boot we reconcile
+  //     against it.
+  //
+  // The in-memory arrays stay the single source of truth exactly as in demo mode;
+  // both tiers are background mirrors of state that already lives in memory, so
+  // none of the CRUD code below changes. All of it is inert in demo mode (DEMO
+  // short-circuits saveState/scheduleSave), so the static export touches neither
+  // IndexedDB nor the network.
+  //
+  // Sync policy (single-user, snapshot granularity): a `dirty` flag on the local
+  // record marks edits the hub hasn't confirmed yet. On boot/reconnect a dirty
+  // local snapshot is pushed up — the device that did the work wins, because
+  // losing an offline edit is the worst outcome — while a clean local adopts
+  // whatever the hub holds, so another device's changes flow in. This is
+  // last-writer-wins per snapshot (same effective policy as before #122), but now
+  // nothing is lost locally while offline. Detecting the rare
+  // two-devices-edited-offline case and surfacing it as a conflict (a version-CAS
+  // pass on /api/state) is the planned follow-up — see #122.
   const API_STATE = '/api/state';
 
-  // buildState is the wire snapshot: the same in-memory arrays, sent verbatim.
-  // The server persists each into its table (see internal/web/state.go) and hands
-  // the same shape back on GET.
+  // Local IndexedDB mirror: one record ('current') in one store holds the whole
+  // snapshot, with `dirty` riding alongside it (see the sync policy above).
+  const DB_NAME = 'tally';
+  const DB_VERSION = 1;
+  const STORE = 'state';
+  const STATE_KEY = 'current';
+  const SNAPSHOT_VERSION = 1;
+
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      let req;
+      try { req = indexedDB.open(DB_NAME, DB_VERSION); }
+      catch (e) { reject(e); return; }
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('indexedDB open failed'));
+    });
+  }
+
+  // buildState is the wire/record snapshot: the same in-memory arrays, sent
+  // verbatim. The server persists each into its table (see internal/web/state.go)
+  // and hands the same shape back on GET; IndexedDB stores it under a version tag.
   function buildState() {
     return { labels, apps, notches, tallies, records };
   }
 
-  // saveState PUTs the current snapshot to the server. Best effort: a failure
-  // (server down, offline) is logged, never fatal — the in-memory copy keeps
-  // working, you just lose durability for that edit until the next successful
-  // save. `keepalive` is set only for the page-hide flush, where the request must
-  // outlive the unloading document.
-  async function saveState(opts) {
-    if (DEMO) return;
+  // idbSave writes the whole snapshot over the single local record, tagging it
+  // dirty (local edits the hub hasn't confirmed) or clean (in step with the hub).
+  // Best effort: a storage failure (quota, private-mode block) is logged, never
+  // fatal — the in-memory copy keeps working.
+  async function idbSave(dirty) {
+    let db;
     try {
-      const res = await fetch(API_STATE, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildState()),
-        keepalive: !!(opts && opts.keepalive),
+      db = await idbOpen();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('write failed'));
+        tx.onabort = () => reject(tx.error || new Error('write aborted'));
+        tx.objectStore(STORE).put({ v: SNAPSHOT_VERSION, dirty: !!dirty, ...buildState() }, STATE_KEY);
       });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
     } catch (e) {
-      console.warn('tally: could not save state', e);
+      console.warn('tally: could not write local state', e);
+    } finally {
+      if (db) db.close();
     }
   }
 
-  // loadState GETs the persisted snapshot. Throws on any transport/HTTP error so
-  // load() can tell "reachable, empty server" (a fresh install) apart from
-  // "couldn't reach the server" and avoid clobbering real data on a transient
-  // failure.
-  async function loadState() {
+  // idbLoad reads the stored local record, or null on first run / any read error.
+  async function idbLoad() {
+    let db;
+    try {
+      db = await idbOpen();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const rq = tx.objectStore(STORE).get(STATE_KEY);
+        rq.onsuccess = () => resolve(rq.result || null);
+        rq.onerror = () => reject(rq.error || new Error('read failed'));
+      });
+    } catch (e) {
+      return null;
+    } finally {
+      if (db) db.close();
+    }
+  }
+
+  // pushRemote PUTs the current snapshot to the hub, throwing on any transport/
+  // HTTP error. `keepalive` is set only for the page-hide flush, where the request
+  // must outlive the unloading document.
+  async function pushRemote(opts) {
+    const res = await fetch(API_STATE, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildState()),
+      keepalive: !!(opts && opts.keepalive),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+  }
+
+  // loadRemote GETs the hub snapshot. Throws on any transport/HTTP error so load()
+  // can tell "reachable, empty hub" (a fresh install) apart from "couldn't reach
+  // the hub" and avoid clobbering real data on a transient failure.
+  async function loadRemote() {
     const res = await fetch(API_STATE, { headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
+  }
+
+  // saveState is the write path every edit funnels through (via scheduleSave). It
+  // writes the local mirror first — durable immediately, marked dirty — then tries
+  // to push to the hub; a successful push re-marks the record clean and lights the
+  // sync pill green. Offline or an error leaves it dirty and the pill amber/red:
+  // the edit is safe locally and flushPending() will retry on the next reconnect.
+  async function saveState(opts) {
+    if (DEMO) return;
+    await idbSave(true);
+    setSyncState('syncing');
+    try {
+      await pushRemote(opts);
+      await idbSave(false);
+      setSyncState('synced');
+    } catch (e) {
+      console.warn('tally: could not sync to the hub', e);
+      setSyncState(navigator.onLine === false ? 'offline' : 'error');
+    }
+  }
+
+  // flushPending re-attempts a push when connectivity may have returned, so edits
+  // made offline sync the moment the hub is reachable again. A no-op when the
+  // local mirror is already clean.
+  async function flushPending() {
+    if (DEMO) return;
+    const rec = await idbLoad();
+    if (!rec || !rec.dirty) { setSyncState('synced'); return; }
+    setSyncState('syncing');
+    try {
+      await pushRemote();
+      await idbSave(false);
+      setSyncState('synced');
+    } catch (e) {
+      setSyncState(navigator.onLine === false ? 'offline' : 'error');
+    }
   }
 
   // scheduleSave coalesces the bursts of persist() calls a single action fires
@@ -214,11 +322,46 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveState, 200);
   }
-  // A pending debounced write would be lost if the tab closes first, so flush it
-  // when the page is hidden — the last reliable moment before unload. keepalive
-  // lets the PUT complete after the document goes away.
   if (!DEMO && typeof window !== 'undefined') {
-    window.addEventListener('pagehide', () => { clearTimeout(saveTimer); saveState({ keepalive: true }); });
+    // A pending debounced write would be lost if the tab closes first. The local
+    // mirror flush and a best-effort keepalive push are both kicked here — the
+    // last reliable moment before unload; keepalive lets the PUT outlive the
+    // document. If the push doesn't land, the record stays dirty and flushes on
+    // the next load.
+    window.addEventListener('pagehide', () => {
+      clearTimeout(saveTimer);
+      idbSave(true);
+      pushRemote({ keepalive: true }).then(() => idbSave(false)).catch(() => {});
+    });
+    // "Sync when it can": flush anything edited offline the moment the browser
+    // regains connectivity, and reflect a dropped connection in the pill.
+    window.addEventListener('online', flushPending);
+    window.addEventListener('offline', () => setSyncState('offline'));
+  }
+
+  // ---------- sync status pill (#122) ----------
+  // A small pill in the header (beside the version chip) that shows sync state at
+  // a glance: green synced, amber offline/pending, red error. Live build only —
+  // demo has no hub to sync with, so mountSync() leaves it hidden.
+  const SYNC_META = {
+    synced:  { label: 'Synced',   title: 'Up to date with the tally node' },
+    syncing: { label: 'Syncing…', title: 'Saving your changes to the tally node' },
+    offline: { label: 'Offline',  title: 'Working offline — changes are saved on this device and will sync when you reconnect' },
+    error:   { label: 'Sync error', title: 'Could not reach the tally node — changes are saved on this device and will retry' },
+  };
+  function setSyncState(state) {
+    const chip = document.getElementById('syncchip');
+    if (!chip) return;
+    const meta = SYNC_META[state] || SYNC_META.synced;
+    chip.className = 'sync ' + state;
+    chip.title = meta.title;
+    chip.innerHTML = '<span class="dot" aria-hidden="true"></span>' + esc(meta.label);
+  }
+  function mountSync() {
+    const chip = document.getElementById('syncchip');
+    if (!chip) return;
+    chip.hidden = false;
+    setSyncState(navigator.onLine === false ? 'offline' : 'synced');
   }
 
   const PALETTE = ['red', 'amber', 'green', 'blue', 'pink', 'cyan'];
@@ -541,37 +684,64 @@
   }
 
   // load populates the state arrays for this session. In demo mode that's always
-  // the fixtures. In live mode it's whatever the server holds, fetched over
-  // GET /api/state:
-  //   - a reachable server with data → hydrate from it;
-  //   - a reachable but empty server (fresh install) → seed a clean, real install
-  //     (no demo fixtures, just the built-in `you` actor) and PUT it so the next
-  //     load restores it;
-  //   - an unreachable server (offline / error) → start clean in memory but do
-  //     NOT save, so a transient failure can't overwrite real server data with an
-  //     empty snapshot.
+  // the fixtures. In live mode it hydrates from the local IndexedDB mirror first
+  // (instant, works offline), then reconciles with the hub over GET /api/state:
+  //   - hub unreachable (offline / error) → keep the local data (or a clean
+  //     session) and do NOT push, so a transient failure can't overwrite real hub
+  //     data with an empty snapshot;
+  //   - local has unsynced edits (dirty) → push them up, the offline-edit case;
+  //   - hub has data and local is clean → adopt the hub (this is how a second
+  //     device's changes arrive) and refresh the local mirror to match;
+  //   - hub is empty → push the local data up (first-sync / migration of existing
+  //     IndexedDB data), or seed a clean, real install (just the built-in `you`).
   async function load() {
     if (DEMO) { seedDemo(); return; }
-    let saved;
-    try { saved = await loadState(); }
-    catch (e) { console.warn('tally: could not load saved state from the server', e); }
 
     const fresh = () => { labels = []; apps = [youApp()]; notches = []; tallies = []; records = []; };
+    const adopt = (s) => {
+      labels = s.labels || []; apps = s.apps || []; notches = s.notches || [];
+      tallies = s.tallies || []; records = s.records || [];
+    };
 
-    if (saved && Array.isArray(saved.apps) && saved.apps.length) {
-      labels = saved.labels || [];
-      apps = saved.apps;
-      notches = saved.notches || [];
-      tallies = saved.tallies || [];
-      records = saved.records || [];
-    } else if (saved) {
-      // Reachable, empty server: seed the built-in actor and persist it.
-      fresh();
-      await saveState();
-    } else {
-      // Unreachable server: clean in-memory session, no save (see above).
-      fresh();
+    // 1. Hydrate from the local mirror so the app is usable instantly and fully
+    //    offline — the reload-on-a-plane case.
+    let local = null;
+    try { local = await idbLoad(); } catch (e) { /* treat as no local */ }
+    const haveLocal = !!(local && Array.isArray(local.apps) && local.apps.length);
+    if (haveLocal) adopt(local);
+
+    // 2. Reconcile with the hub. A GET failure means offline/unreachable: keep the
+    //    local data (or a clean session), light the pill, and don't push.
+    let remote;
+    try { remote = await loadRemote(); }
+    catch (e) {
+      console.warn('tally: could not reach the tally node', e);
+      if (!haveLocal) fresh();
+      setSyncState('offline');
+      return;
     }
+
+    if (local && local.dirty) {
+      // Local carries edits the hub hasn't confirmed (e.g. made offline). The
+      // device that did the work wins: keep local and push it up. saveState()
+      // marks the mirror clean and lights the pill.
+      if (!haveLocal) fresh();
+      await saveState();
+      return;
+    }
+
+    if (remote && Array.isArray(remote.apps) && remote.apps.length) {
+      // Clean local (or none): adopt the hub and refresh the local mirror to match.
+      adopt(remote);
+      await idbSave(false);
+      setSyncState('synced');
+      return;
+    }
+
+    // Empty hub: push local up (migration) or seed a clean install; either way
+    // saveState() persists locally and to the hub.
+    if (!haveLocal) fresh();
+    await saveState();
   }
   // persist records an edit. In demo mode there is nothing to write to — the
   // record already lives in `notches` by reference — so we just stamp the time
@@ -3356,6 +3526,7 @@
   // depend on state run first so the page never looks blank while the fetch runs.
   async function boot() {
     initTheme();
+    if (DEMO === false) mountSync();
     await load();
     mountDemoBar();
     mountNav();
