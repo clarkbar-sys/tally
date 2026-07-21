@@ -1072,15 +1072,35 @@
   // rendering user text can never inject HTML.
   const TASK_RE = /^(\s*[-*+]\s+\[)([ xX])(\])(\s+)([\s\S]*)$/;
 
+  // Placeholder markers keep already-linkified text (code spans, markdown
+  // links) safe from the bare-URL autolinker and bold/italic passes below.
+  // A NUL byte can't occur in escaped HTML or in a textarea's value, so it's
+  // a safe stand-in until the final swap-back.
+  const LINK_PLACEHOLDER = (i) => `\u0000${i}\u0000`;
+
   function mdInline(s) {
     let t = esc(s);
-    t = t.replace(/`([^`]+)`/g, (m, c) => `<code>${c}</code>`);
+    const links = [];
+    const stash = (html) => { links.push(html); return LINK_PLACEHOLDER(links.length - 1); };
+    t = t.replace(/`([^`]+)`/g, (m, c) => stash(`<code>${c}</code>`));
     // links [text](http(s)://url) — scheme-restricted so no javascript: URIs
     t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
-      (m, label, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+      (m, label, url) => stash(`<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`));
+    // bare URLs — autolink plain http(s):// text so pasted links are clickable
+    // without requiring Markdown [text](url) syntax. Trailing punctuation that
+    // usually closes a sentence/parenthetical is left outside the link.
+    t = t.replace(/https?:\/\/[^\s<]+/g, (m) => {
+      let url = m, trail = '';
+      const trailRe = /[).,;:!?'"]+$/;
+      const cut = trailRe.exec(url);
+      if (cut) { trail = cut[0]; url = url.slice(0, -trail.length); }
+      if (!url) return m;
+      return stash(`<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`) + trail;
+    });
     t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
     t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
     t = t.replace(/(^|[^\w_])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
+    t = t.replace(/\u0000(\d+)\u0000/g, (m, i) => links[+i]);
     return t;
   }
 
