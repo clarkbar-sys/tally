@@ -1103,6 +1103,10 @@
   const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>';
 
   // ---------- status ticker ----------
+  // Rendered as a collapsible "Stats" roll-up (collapsed by default) so the
+  // count line doesn't shove the nav down on a phone. Mirrors the sub-notches
+  // roll-up pattern below: a toggle button plus a body the toggle shows/hides.
+  let statsCollapsed = true;
   function ticker() {
     const el = document.getElementById('ticker');
     if (!el) return;
@@ -1116,13 +1120,18 @@
     }
     const open = notches.filter((n) => notchStatus(n) === 'open').length;
     const openTallies = tallies.filter((t) => tallyStatus(t) === 'open').length;
-    el.innerHTML =
+    const stats =
       `<span class="stat"><b>${open}</b> open</span>` +
       `<span class="stat"><b class="up">${done}</b> of <b>${total}</b> tasks done</span>` +
       `<span class="stat"><b>${tags.size}</b> tags</span>` +
       `<span class="stat"><b>${files}</b> file${files === 1 ? '' : 's'}</span>` +
       `<span class="stat"><b>${openTallies}</b> open ${openTallies === 1 ? 'tally' : 'tallies'}</span>` +
       `<span class="stat"><a class="stat-link" href="#/ledger"><b>${records.length}</b> in ledger</a></span>`;
+    el.className = `ticker${statsCollapsed ? ' collapsed' : ''}`;
+    el.innerHTML =
+      `<button class="stats-toggle" type="button" id="stats-toggle" aria-expanded="${!statsCollapsed}">` +
+      `<span class="caret" aria-hidden="true">${ICON.caret}</span><span>Stats</span></button>` +
+      `<div class="stats-body">${stats}</div>`;
   }
 
   // ---------- cards ----------
@@ -2431,6 +2440,11 @@
   }
 
   function onDocClick(e) {
+    if (e.target.closest('#stats-toggle')) {
+      statsCollapsed = !statsCollapsed;
+      ticker();
+      return;
+    }
     const open = document.querySelectorAll('.menu.open');
     if (!open.length) return;
     open.forEach((m) => { if (!m.contains(e.target)) closeMenuEl(m); });
