@@ -4,6 +4,13 @@
 // (internal/model). Per the datastore decision (docs/adr/0002-datastore.md):
 // one file, WAL mode, a lightweight forward-only migration runner over plain
 // .sql files, no ORM.
+//
+// It backs two model families. The financial accounts/transactions layer
+// (0001_init) holds provider-sourced ledger data. The app-protocol layer
+// (0002_app_protocol) holds the app→proposal→merge substrate — apps, proposals
+// and their append-only event timelines, notches, and records — that today runs
+// in-memory in internal/web/static/app.js; the interfaces in protocol.go are the
+// seam the engine (S1, initiative #95) writes through.
 package store
 
 import (
