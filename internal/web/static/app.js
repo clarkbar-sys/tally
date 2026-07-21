@@ -178,13 +178,15 @@
   //
   // Sync policy (single-user, snapshot granularity): a `dirty` flag on the local
   // record marks edits the hub hasn't confirmed yet. On boot/reconnect a dirty
-  // local snapshot is pushed up — the device that did the work wins, because
-  // losing an offline edit is the worst outcome — while a clean local adopts
-  // whatever the hub holds, so another device's changes flow in. This is
-  // last-writer-wins per snapshot (same effective policy as before #122), but now
-  // nothing is lost locally while offline. Detecting the rare
-  // two-devices-edited-offline case and surfacing it as a conflict (a version-CAS
-  // pass on /api/state) is the planned follow-up — see #122.
+  // local snapshot is pushed up while a clean local adopts whatever the hub holds,
+  // so another device's changes flow in. Each push carries the hub version those
+  // edits were based on (`If-Match`), and the hub compare-and-swaps: if it moved
+  // underneath us — the two-devices-edited-offline case — the push is rejected
+  // with 409 instead of silently clobbering. Rather than pick a winner, we
+  // quarantine the losing snapshot, adopt the hub's copy, and surface a `conflict`
+  // the user resolves by hand (keep-mine / discard-mine) — see handleConflict and
+  // openQuarantineView below (#124). Nothing is lost: the common single-device and
+  // clean-local paths are unchanged, and no data leaves the device on a conflict.
   const API_STATE = '/api/state';
 
   // Local IndexedDB mirror: one record ('current') in one store holds the whole
@@ -193,7 +195,35 @@
   const DB_VERSION = 1;
   const STORE = 'state';
   const STATE_KEY = 'current';
+  // A second slot in the same store holds a snapshot that lost a sync conflict
+  // (#124): the local dirty edits the hub rejected, parked here until the user
+  // resolves them by hand (keep-mine / discard-mine) via the quarantine view.
+  const QUARANTINE_KEY = 'quarantine';
   const SNAPSHOT_VERSION = 1;
+
+  // serverVersion is the hub snapshot version this device's in-memory state is
+  // based on — the value the hub returned (as an ETag) the last time we synced
+  // (#124). It rides alongside `dirty` in the local record and is sent back on
+  // every push as `If-Match`, so the hub can compare-and-swap: a push whose base
+  // no longer matches means another device moved the snapshot underneath us, and
+  // the hub answers 409 instead of letting us silently clobber it. null means this
+  // device has never synced (a first push / migration), so the push is sent
+  // without a base and lands unconditionally.
+  let serverVersion = null;
+
+  // conflictPending mirrors "a quarantined snapshot is waiting to be resolved", so
+  // a later successful save doesn't quietly flip the pill to Synced and hide it.
+  // It stays true until the user picks keep-mine / discard-mine (#124).
+  let conflictPending = false;
+
+  // parseVersion pulls the integer snapshot version out of a response's ETag
+  // (`"5"`, `W/"5"`, or a bare `5`), or null when absent/unparseable.
+  function parseVersion(res) {
+    const raw = res.headers.get('ETag');
+    if (!raw) return null;
+    const n = parseInt(raw.replace(/^W\//, '').replace(/"/g, '').trim(), 10);
+    return Number.isFinite(n) ? n : null;
+  }
 
   function idbOpen() {
     return new Promise((resolve, reject) => {
@@ -229,10 +259,64 @@
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error || new Error('write failed'));
         tx.onabort = () => reject(tx.error || new Error('write aborted'));
-        tx.objectStore(STORE).put({ v: SNAPSHOT_VERSION, dirty: !!dirty, ...buildState() }, STATE_KEY);
+        tx.objectStore(STORE).put({ v: SNAPSHOT_VERSION, dirty: !!dirty, serverVersion, ...buildState() }, STATE_KEY);
       });
     } catch (e) {
       console.warn('tally: could not write local state', e);
+    } finally {
+      if (db) db.close();
+    }
+  }
+
+  // idbPut/idbGet/idbDelete are the one-shot primitives the quarantine slot uses:
+  // a lost-conflict snapshot lives under QUARANTINE_KEY in the same store as the
+  // live record, written when a push is rejected and cleared once resolved. All
+  // best-effort — a storage failure never breaks the in-memory app.
+  async function idbPut(key, value) {
+    let db;
+    try {
+      db = await idbOpen();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('write failed'));
+        tx.onabort = () => reject(tx.error || new Error('write aborted'));
+        tx.objectStore(STORE).put(value, key);
+      });
+    } catch (e) {
+      console.warn('tally: could not write ' + key, e);
+    } finally {
+      if (db) db.close();
+    }
+  }
+  async function idbGet(key) {
+    let db;
+    try {
+      db = await idbOpen();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const rq = tx.objectStore(STORE).get(key);
+        rq.onsuccess = () => resolve(rq.result || null);
+        rq.onerror = () => reject(rq.error || new Error('read failed'));
+      });
+    } catch (e) {
+      return null;
+    } finally {
+      if (db) db.close();
+    }
+  }
+  async function idbDelete(key) {
+    let db;
+    try {
+      db = await idbOpen();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('delete failed'));
+        tx.objectStore(STORE).delete(key);
+      });
+    } catch (e) {
+      console.warn('tally: could not clear ' + key, e);
     } finally {
       if (db) db.close();
     }
@@ -260,22 +344,41 @@
   // HTTP error. `keepalive` is set only for the page-hide flush, where the request
   // must outlive the unloading document.
   async function pushRemote(opts) {
+    const headers = { 'Content-Type': 'application/json' };
+    // Send the base version so the hub can compare-and-swap; omitted only when
+    // this device has never synced (first push / migration), where there is no
+    // base to conflict against.
+    if (serverVersion != null) headers['If-Match'] = '"' + serverVersion + '"';
     const res = await fetch(API_STATE, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(buildState()),
       keepalive: !!(opts && opts.keepalive),
     });
+    if (res.status === 409) {
+      // The hub moved underneath us: another device pushed since our base. Carry
+      // the hub's current snapshot and version back so saveState can quarantine
+      // our edits and adopt the hub's copy rather than clobber it.
+      const err = new Error('sync conflict');
+      err.conflict = true;
+      err.serverVersion = parseVersion(res);
+      err.serverSnapshot = await res.json().catch(() => null);
+      throw err;
+    }
     if (!res.ok) throw new Error('HTTP ' + res.status);
+    // A clean push lands a new version; adopt it as our new base.
+    const nv = parseVersion(res);
+    if (nv != null) serverVersion = nv;
   }
 
-  // loadRemote GETs the hub snapshot. Throws on any transport/HTTP error so load()
-  // can tell "reachable, empty hub" (a fresh install) apart from "couldn't reach
-  // the hub" and avoid clobbering real data on a transient failure.
+  // loadRemote GETs the hub snapshot and its version. Throws on any transport/HTTP
+  // error so load() can tell "reachable, empty hub" (a fresh install) apart from
+  // "couldn't reach the hub" and avoid clobbering real data on a transient failure.
   async function loadRemote() {
     const res = await fetch(API_STATE, { headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    return res.json();
+    const snapshot = await res.json();
+    return { snapshot, version: parseVersion(res) };
   }
 
   // saveState is the write path every edit funnels through (via scheduleSave). It
@@ -290,8 +393,11 @@
     try {
       await pushRemote(opts);
       await idbSave(false);
-      setSyncState('synced');
+      // A save can succeed while an *earlier* conflict is still unresolved — keep
+      // surfacing it rather than masking the quarantine with a green pill.
+      setSyncState(conflictPending ? 'conflict' : 'synced');
     } catch (e) {
+      if (e && e.conflict) { await handleConflict(e); return; }
       console.warn('tally: could not sync to the hub', e);
       setSyncState(navigator.onLine === false ? 'offline' : 'error');
     }
@@ -302,6 +408,9 @@
   // local mirror is already clean.
   async function flushPending() {
     if (DEMO) return;
+    // A still-unresolved conflict must not be flushed as an ordinary push — that
+    // would re-clobber. Keep surfacing it until the user resolves the quarantine.
+    if (await idbGet(QUARANTINE_KEY)) { conflictPending = true; setSyncState('conflict'); return; }
     const rec = await idbLoad();
     if (!rec || !rec.dirty) { setSyncState('synced'); return; }
     setSyncState('syncing');
@@ -310,6 +419,70 @@
       await idbSave(false);
       setSyncState('synced');
     } catch (e) {
+      if (e && e.conflict) { await handleConflict(e); return; }
+      setSyncState(navigator.onLine === false ? 'offline' : 'error');
+    }
+  }
+
+  // adoptSnapshot swaps the in-memory model wholesale for snapshot s (the hub's
+  // copy, or a quarantined one being restored). The in-memory arrays stay the
+  // single source of truth; this is the one place they're replaced rather than
+  // mutated in place.
+  function adoptSnapshot(s) {
+    labels = s.labels || [];
+    apps = s.apps || [];
+    notches = s.notches || [];
+    tallies = s.tallies || [];
+    records = s.records || [];
+  }
+
+  // handleConflict is the losing-push path: the hub rejected our push because it
+  // changed under us (another device). We don't lose the work — the local dirty
+  // snapshot is parked in quarantine — but the live view adopts the hub's copy so
+  // both devices agree again, and the sync pill flips to a distinct `conflict`
+  // state the user can click to resolve. (#124)
+  async function handleConflict(e) {
+    // Capture our edits *before* adopting the hub's copy — buildState() holds live
+    // array references, so the quarantine put must clone them first.
+    const mine = buildState();
+    await idbPut(QUARANTINE_KEY, { base: serverVersion, at: now(), snapshot: mine });
+    if (e && e.serverSnapshot) adoptSnapshot(e.serverSnapshot);
+    if (e && e.serverVersion != null) serverVersion = e.serverVersion;
+    await idbSave(false); // live state now matches the hub — mark clean
+    conflictPending = true;
+    setSyncState('conflict');
+    ticker();
+  }
+
+  // resolveConflict applies the user's choice from the quarantine view. `keep`
+  // force-pushes the quarantined edits over the hub's current version (they win);
+  // `discard` drops them and keeps the hub's copy the live view already shows.
+  async function resolveConflict(mode) {
+    const q = await idbGet(QUARANTINE_KEY);
+    if (!q) { conflictPending = false; setSyncState('synced'); return; }
+    if (mode === 'discard') {
+      await idbDelete(QUARANTINE_KEY);
+      conflictPending = false;
+      setSyncState('synced');
+      return;
+    }
+    // keep-mine: make the quarantined snapshot the live state and push it on top
+    // of the hub's current version (serverVersion is the hub's, adopted at
+    // conflict time), so it lands as a new version.
+    adoptSnapshot(q.snapshot || {});
+    ticker();
+    await idbSave(true);
+    setSyncState('syncing');
+    try {
+      await pushRemote();
+      await idbSave(false);
+      await idbDelete(QUARANTINE_KEY);
+      conflictPending = false;
+      setSyncState('synced');
+    } catch (err) {
+      // The hub moved again between conflict and resolve: re-quarantine against
+      // the newer copy instead of clobbering it.
+      if (err && err.conflict) { await handleConflict(err); return; }
       setSyncState(navigator.onLine === false ? 'offline' : 'error');
     }
   }
@@ -344,10 +517,11 @@
   // a glance: green synced, amber offline/pending, red error. Live build only —
   // demo has no hub to sync with, so mountSync() leaves it hidden.
   const SYNC_META = {
-    synced:  { label: 'Synced',   title: 'Up to date with the tally node' },
-    syncing: { label: 'Syncing…', title: 'Saving your changes to the tally node' },
-    offline: { label: 'Offline',  title: 'Working offline — changes are saved on this device and will sync when you reconnect' },
-    error:   { label: 'Sync error', title: 'Could not reach the tally node — changes are saved on this device and will retry' },
+    synced:   { label: 'Synced',   title: 'Up to date with the tally node' },
+    syncing:  { label: 'Syncing…', title: 'Saving your changes to the tally node' },
+    offline:  { label: 'Offline',  title: 'Working offline — changes are saved on this device and will sync when you reconnect' },
+    error:    { label: 'Sync error', title: 'Could not reach the tally node — changes are saved on this device and will retry' },
+    conflict: { label: 'Conflict', title: 'The tally node changed underneath your edits — click to review and resolve the quarantined changes' },
   };
   function setSyncState(state) {
     const chip = document.getElementById('syncchip');
@@ -356,12 +530,88 @@
     chip.className = 'sync ' + state;
     chip.title = meta.title;
     chip.innerHTML = '<span class="dot" aria-hidden="true"></span>' + esc(meta.label);
+    // A conflict pill is a button into the quarantine view; the others are inert
+    // status, so keep them out of the tab order and off the button role.
+    if (state === 'conflict') {
+      chip.setAttribute('role', 'button');
+      chip.setAttribute('tabindex', '0');
+    } else {
+      chip.removeAttribute('role');
+      chip.removeAttribute('tabindex');
+    }
   }
   function mountSync() {
     const chip = document.getElementById('syncchip');
     if (!chip) return;
     chip.hidden = false;
+    const open = () => { if (chip.classList.contains('conflict')) openQuarantineView(); };
+    chip.addEventListener('click', open);
+    chip.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
     setSyncState(navigator.onLine === false ? 'offline' : 'synced');
+  }
+
+  // restoreConflictState re-surfaces an unresolved conflict on boot: if a
+  // quarantined snapshot survived a reload, the pill goes back to `conflict` so
+  // the user is never left thinking a lost edit synced.
+  async function restoreConflictState() {
+    if (DEMO) return;
+    if (await idbGet(QUARANTINE_KEY)) { conflictPending = true; setSyncState('conflict'); }
+  }
+
+  // describeSnapshot summarizes a quarantined snapshot for the resolution view: a
+  // count line plus the first few notch titles, so the user can tell what they'd
+  // be re-pushing before choosing keep-mine.
+  function describeSnapshot(s) {
+    s = s || {};
+    const ns = s.notches || [], ts = s.tallies || [], rs = s.records || [];
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    const counts = [plural(ns.length, 'notch', 'notches'), plural(ts.length, 'tally', 'tallies'), plural(rs.length, 'record', 'records')];
+    const shown = ns.slice(0, 6).map((x) => `<li>${esc((x.title || '').trim() || 'untitled')}</li>`).join('');
+    const more = ns.length > 6 ? `<li class="cf-more">…and ${ns.length - 6} more</li>` : '';
+    const list = shown ? `<ul class="cf-list">${shown}${more}</ul>` : '';
+    return `<div class="cf-counts">${esc(counts.join(' · '))}</div>${list}`;
+  }
+
+  // openQuarantineView is the conflict resolution surface (#124): it shows the
+  // snapshot the hub rejected, plainly marked, with keep-mine / discard-mine.
+  // Built as a native <dialog> so Esc and focus handling come for free (mirrors
+  // the update sheet).
+  async function openQuarantineView() {
+    const q = await idbGet(QUARANTINE_KEY);
+    document.getElementById('conflict-modal')?.remove();
+
+    const dlg = document.createElement('dialog');
+    dlg.id = 'conflict-modal';
+    dlg.className = 'update-modal conflict-modal';
+    if (!q) {
+      dlg.innerHTML =
+        '<h2 class="um-title">No conflict</h2>' +
+        '<p class="um-sub">Nothing is quarantined right now — you’re in step with the tally node.</p>' +
+        '<div class="um-actions"><button class="btn primary sm" type="button" id="cf-close">Close</button></div>';
+    } else {
+      const when = q.at ? new Date(q.at).toLocaleString() : 'earlier';
+      dlg.innerHTML =
+        '<h2 class="um-title">Sync conflict</h2>' +
+        '<p class="um-sub">These changes couldn’t sync — the tally node changed underneath them, most likely edited on another device. Nothing is lost: your edits are held safely on this device below, and the live view now shows the tally node’s copy. Choose which to keep.</p>' +
+        '<div class="cf-box">' +
+        `<div class="cf-h">Your quarantined changes <span class="cf-when">${esc(when)}</span></div>` +
+        describeSnapshot(q.snapshot) +
+        '</div>' +
+        '<div class="um-actions">' +
+        '<button class="btn ghost sm" type="button" id="cf-discard">Discard mine</button>' +
+        '<button class="btn primary sm" type="button" id="cf-keep">Keep mine</button>' +
+        '</div>';
+    }
+    document.body.appendChild(dlg);
+
+    dlg.querySelector('#cf-close')?.addEventListener('click', () => dlg.close());
+    dlg.querySelector('#cf-keep')?.addEventListener('click', () => { dlg.close(); resolveConflict('keep'); });
+    dlg.querySelector('#cf-discard')?.addEventListener('click', () => { dlg.close(); resolveConflict('discard'); });
+    dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // backdrop
+    dlg.addEventListener('close', () => dlg.remove());
+    dlg.showModal();
   }
 
   const PALETTE = ['red', 'amber', 'green', 'blue', 'pink', 'cyan'];
@@ -698,17 +948,17 @@
     if (DEMO) { seedDemo(); return; }
 
     const fresh = () => { labels = []; apps = [youApp()]; notches = []; tallies = []; records = []; };
-    const adopt = (s) => {
-      labels = s.labels || []; apps = s.apps || []; notches = s.notches || [];
-      tallies = s.tallies || []; records = s.records || [];
-    };
 
     // 1. Hydrate from the local mirror so the app is usable instantly and fully
-    //    offline — the reload-on-a-plane case.
+    //    offline — the reload-on-a-plane case. The stored base version comes with
+    //    it, so a dirty push carries the version those edits were made against.
     let local = null;
     try { local = await idbLoad(); } catch (e) { /* treat as no local */ }
     const haveLocal = !!(local && Array.isArray(local.apps) && local.apps.length);
-    if (haveLocal) adopt(local);
+    if (haveLocal) {
+      adoptSnapshot(local);
+      serverVersion = (local.serverVersion != null) ? local.serverVersion : null;
+    }
 
     // 2. Reconcile with the hub. A GET failure means offline/unreachable: keep the
     //    local data (or a clean session), light the pill, and don't push.
@@ -722,24 +972,30 @@
     }
 
     if (local && local.dirty) {
-      // Local carries edits the hub hasn't confirmed (e.g. made offline). The
-      // device that did the work wins: keep local and push it up. saveState()
-      // marks the mirror clean and lights the pill.
+      // Local carries edits the hub hasn't confirmed (e.g. made offline). Push
+      // them up against the version they were based on (serverVersion, kept from
+      // the local record above — deliberately NOT the version we just GET'd). If
+      // the hub moved since, saveState()'s push gets a 409 and quarantines the
+      // edits as a conflict instead of clobbering the hub.
       if (!haveLocal) fresh();
       await saveState();
       return;
     }
 
-    if (remote && Array.isArray(remote.apps) && remote.apps.length) {
-      // Clean local (or none): adopt the hub and refresh the local mirror to match.
-      adopt(remote);
+    const snap = remote.snapshot;
+    if (snap && Array.isArray(snap.apps) && snap.apps.length) {
+      // Clean local (or none): adopt the hub, take its version as our base, and
+      // refresh the local mirror to match.
+      adoptSnapshot(snap);
+      serverVersion = remote.version;
       await idbSave(false);
       setSyncState('synced');
       return;
     }
 
     // Empty hub: push local up (migration) or seed a clean install; either way
-    // saveState() persists locally and to the hub.
+    // saveState() persists locally and to the hub. serverVersion is null here (the
+    // hub has nothing), so the push lands unconditionally.
     if (!haveLocal) fresh();
     await saveState();
   }
@@ -3528,6 +3784,7 @@
     initTheme();
     if (DEMO === false) mountSync();
     await load();
+    if (DEMO === false) await restoreConflictState();
     mountDemoBar();
     mountNav();
     if (DEMO === false) mountVersionCheck();

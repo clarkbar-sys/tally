@@ -25,12 +25,19 @@ func openStore(t *testing.T) *store.Store {
 }
 
 func serve(h http.Handler, method, path string, body []byte) *httptest.ResponseRecorder {
+	return serveWith(h, method, path, body, nil)
+}
+
+func serveWith(h http.Handler, method, path string, body []byte, headers map[string]string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	var r *http.Request
 	if body != nil {
 		r = httptest.NewRequest(method, path, bytes.NewReader(body))
 	} else {
 		r = httptest.NewRequest(method, path, nil)
+	}
+	for k, v := range headers {
+		r.Header.Set(k, v)
 	}
 	h.ServeHTTP(rec, r)
 	return rec
@@ -131,6 +138,72 @@ func TestStateRejectsUnsupportedMethod(t *testing.T) {
 	h := Handler(openStore(t))
 	if rec := serve(h, http.MethodDelete, "/api/state", nil); rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("DELETE status = %d, want 405", rec.Code)
+	}
+}
+
+func TestStateGetReturnsVersionETag(t *testing.T) {
+	h := Handler(openStore(t))
+
+	// A fresh DB is at version 0.
+	if rec := serve(h, http.MethodGet, "/api/state", nil); rec.Header().Get("ETag") != `"0"` {
+		t.Fatalf("fresh ETag = %q, want \"0\"", rec.Header().Get("ETag"))
+	}
+
+	rec := serve(h, http.MethodPut, "/api/state", []byte(sampleState))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("PUT status = %d (%s), want 204", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("ETag") != `"1"` {
+		t.Fatalf("PUT ETag = %q, want \"1\"", rec.Header().Get("ETag"))
+	}
+	if rec := serve(h, http.MethodGet, "/api/state", nil); rec.Header().Get("ETag") != `"1"` {
+		t.Fatalf("GET ETag = %q, want \"1\"", rec.Header().Get("ETag"))
+	}
+}
+
+func TestStatePutCASAcceptsCurrentVersion(t *testing.T) {
+	h := Handler(openStore(t))
+
+	// First push has no base (a first sync / migration): unconditional, -> v1.
+	if rec := serve(h, http.MethodPut, "/api/state", []byte(sampleState)); rec.Code != http.StatusNoContent {
+		t.Fatalf("first PUT status = %d, want 204", rec.Code)
+	}
+	// Second push carrying the matching If-Match is accepted and bumps to v2.
+	rec := serveWith(h, http.MethodPut, "/api/state", []byte(sampleState), map[string]string{"If-Match": `"1"`})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("CAS PUT status = %d (%s), want 204", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("ETag") != `"2"` {
+		t.Fatalf("CAS PUT ETag = %q, want \"2\"", rec.Header().Get("ETag"))
+	}
+}
+
+func TestStatePutCASRejectsStaleVersion(t *testing.T) {
+	h := Handler(openStore(t))
+
+	if rec := serve(h, http.MethodPut, "/api/state", []byte(sampleState)); rec.Code != http.StatusNoContent {
+		t.Fatalf("first PUT status = %d, want 204", rec.Code) // -> v1
+	}
+	if rec := serveWith(h, http.MethodPut, "/api/state", []byte(sampleState), map[string]string{"If-Match": `"1"`}); rec.Code != http.StatusNoContent {
+		t.Fatalf("second PUT status = %d, want 204", rec.Code) // -> v2
+	}
+
+	// A push still holding the stale base v1 is rejected with 409, carrying the
+	// current server snapshot and its version so the client can adopt it.
+	rec := serveWith(h, http.MethodPut, "/api/state", []byte(`{"labels":[],"apps":[],"notches":[],"tallies":[],"records":[]}`), map[string]string{"If-Match": `"1"`})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("stale PUT status = %d (%s), want 409", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("ETag") != `"2"` {
+		t.Fatalf("conflict ETag = %q, want \"2\"", rec.Header().Get("ETag"))
+	}
+	// The 409 body is the (unclobbered) server snapshot: its notches survive.
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode conflict body: %v", err)
+	}
+	if n, _ := body["notches"].([]any); len(n) == 0 {
+		t.Fatalf("conflict body notches empty — stale push clobbered state")
 	}
 }
 
