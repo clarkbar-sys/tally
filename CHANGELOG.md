@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.8.0...tally-v0.9.0) (2026-07-21)
+
+
+### Features
+
+* **web:** show version and offer upgrade when a newer release exists ([#114](https://github.com/clarkbar-sys/tally/issues/114)) ([516a57e](https://github.com/clarkbar-sys/tally/commit/516a57ee117df825cc02a010860ba5919e13cb4f))
+
 ## [0.8.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.7.0...tally-v0.8.0) (2026-07-21)
 
 
