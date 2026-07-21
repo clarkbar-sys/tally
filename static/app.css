@@ -422,6 +422,25 @@
   @keyframes verPulse{ 0%,100%{ opacity: 1; } 50%{ opacity: .45; } }
   @media (prefers-reduced-motion: reduce){ .version.avail .dot.up{ animation: none; } }
 
+  /* ---------- sync status pill (#122) ---------- */
+  /* Mirrors the version pill: a coloured dot showing sync state at a glance —
+     green synced, amber offline/pending, red error. Live build only; app.js
+     unhides it (mountSync), demo keeps it hidden. */
+  .sync{
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+    padding: 5px 10px; font-size: 11px; letter-spacing: .02em; color: var(--ink-dim);
+    white-space: nowrap;
+  }
+  .sync[hidden]{ display: none; }
+  .sync .dot{ width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 6px color-mix(in srgb, var(--good) 60%, transparent); }
+  .sync.offline{ color: var(--ink); border-color: color-mix(in srgb, var(--warn) 50%, var(--line-strong)); }
+  .sync.offline .dot{ background: var(--warn); box-shadow: 0 0 6px color-mix(in srgb, var(--warn) 60%, transparent); }
+  .sync.error{ color: var(--ink); border-color: color-mix(in srgb, var(--danger) 55%, var(--line-strong)); }
+  .sync.error .dot{ background: var(--danger); box-shadow: 0 0 6px color-mix(in srgb, var(--danger) 60%, transparent); }
+  .sync.syncing .dot{ animation: verPulse 1.2s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce){ .sync.syncing .dot{ animation: none; } }
+
   /* ---------- update popup ---------- */
   /* The upgrade sheet opened from the version pill: the new tag, the running
      build, and a copyable command to re-run the installer on the box over SSH.
