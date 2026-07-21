@@ -15,7 +15,7 @@ const iconCheck = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 
 // versionString is the running build's version, shown in the header. Kept in Go
 // so the template stays declarative.
-func versionString() string { return version.String() }
+func versionString() string { return version.Version }
 
 // pageMode is the value of the app shell's data-mode attribute, the one signal
 // static/app.js reads to pick its storage backend. The static export (GitHub
