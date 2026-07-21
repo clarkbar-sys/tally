@@ -1,10 +1,14 @@
 #!/bin/sh
-# tally installer. Run on the box:
+# tally installer — build-from-a-checkout path. Run on the box from a clone:
 #
 #     sudo sh install.sh
 #
 # Installs the tally binary, a dedicated service user, and the systemd unit,
 # then (re)starts the tailnet service. Idempotent — safe to re-run to upgrade.
+#
+# This path builds from source (or uses a prebuilt ./tally at the repo root).
+# For a box that just wants to run tally, the root ../install.sh one-liner
+# fetches a prebuilt release binary instead — no checkout, no Go toolchain.
 #
 # Prerequisites (see deploy/README.md):
 #   - Run from a checkout of this repo on the box.
