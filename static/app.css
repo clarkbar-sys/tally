@@ -1261,4 +1261,66 @@
     .section-body form.row .btn{ flex: 1 1 auto; }
   }
 
+  /* ---------- mobile: Option A shell — bottom nav + FAB (issue #128) ----------
+     On a phone the four top-level views move to a fixed bottom tab bar within
+     thumb reach (the mobile form of the desktop .viewnav pill row), a floating
+     New-notch button replaces the inline header menu, and the notch cards get
+     roomier type + padding so titles and meta read cleanly. Purely presentation:
+     no data-model, routing, or `is:` filter-token changes. Safe-area insets keep
+     the bar and button clear of the home indicator (builds on #126).
+
+     The FAB is its own self-contained .menu (see renderList in app.js), so it
+     reuses the shared popover machinery; it's hidden here at the base and only
+     revealed inside the phone breakpoint below (source order lets the media
+     rule win). */
+  .fab-menu{ display: none; }
+
+  @media (max-width: 560px){
+    /* Reserve room under the scrolling content for the fixed bottom bar. */
+    .app{ padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
+
+    /* The view switch becomes a bottom tab bar: icon over label, equal columns,
+       the active tab lit in the accent (no pill) — the GitHub-app register. */
+    .viewnav{
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+      margin: 0; gap: 0;
+      padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+      background: color-mix(in srgb, var(--bg-raised) 94%, transparent);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border-top: 1px solid var(--line-strong);
+    }
+    .viewnav a{
+      flex: 1 1 0; flex-direction: column; gap: 3px; padding: 7px 0 5px;
+      border: 0; border-radius: var(--r-sm);
+      font-size: 10.5px; font-weight: 600; color: var(--ink-faint);
+    }
+    .viewnav a:hover{ background: none; color: var(--ink-faint); }
+    .viewnav a[aria-current="page"]{ background: none; border: 0; color: var(--accent); }
+    .viewnav .nav-emoji{ font-size: 21px; filter: none; }
+
+    /* New notch → a floating action button; hide the header's inline menu. */
+    .section .menu[data-menu="new-notch"]{ display: none; }
+    .fab-menu{
+      display: block; position: fixed; right: 16px; z-index: 21;
+      bottom: calc(74px + env(safe-area-inset-bottom));
+    }
+    .fab-new{
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 56px; height: 56px; border-radius: 18px; border: 0; cursor: pointer;
+      background: var(--accent); color: var(--accent-ink);
+      box-shadow: 0 10px 24px -8px color-mix(in srgb, var(--accent) 70%, transparent);
+      transition: transform .08s ease, background .12s ease;
+    }
+    .fab-new:active{ transform: scale(.94); }
+    .fab-new:focus-visible{ outline: 2px solid var(--accent); outline-offset: 3px; }
+    .fab-new svg{ width: 26px; height: 26px; }
+    /* Its popover opens upward from the button as a small sheet. */
+    .fab-menu .menu-pop{ top: auto; bottom: calc(100% + 10px); left: auto; right: 0; min-width: 240px; }
+
+    /* Roomier, more legible notch cards — the "better read text" ask. */
+    a.notch-card{ padding: 16px; }
+    a.notch-card .title{ font-size: 18.5px; line-height: 1.3; }
+    .notch-card .meta{ font-size: 13px; margin-top: 9px; }
+  }
+
   @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
