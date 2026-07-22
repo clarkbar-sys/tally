@@ -3664,11 +3664,15 @@
     nav.className = 'viewnav';
     nav.id = 'viewnav';
     nav.setAttribute('aria-label', 'Views');
+    // A leading emoji on each tab is decorative flair — wrapped in an
+    // aria-hidden span so assistive tech still reads just the "Notches" label.
+    const tab = (href, nav_, emoji, label) =>
+      `<a href="${href}" data-nav="${nav_}"><span class="nav-emoji" aria-hidden="true">${emoji}</span>${label}</a>`;
     nav.innerHTML =
-      '<a href="#/" data-nav="notches">Notches</a>' +
-      '<a href="#/t" data-nav="tallies">Tallies</a>' +
-      '<a href="#/ledger" data-nav="ledger">Ledger</a>' +
-      '<a href="#/apps" data-nav="apps">Apps</a>';
+      tab('#/', 'notches', '🪵', 'Notches') +
+      tab('#/t', 'tallies', '⚖️', 'Tallies') +
+      tab('#/ledger', 'ledger', '📖', 'Ledger') +
+      tab('#/apps', 'apps', '⚙️', 'Apps');
     anchor.parentNode.insertBefore(nav, anchor.nextSibling);
     setNav();
   }

@@ -370,7 +370,15 @@
   h1, h2, h3, p{ margin: 0; }
   a{ color: var(--accent-strong); }
 
-  .app{ max-width: 620px; margin: 0 auto; padding: 0 0 var(--sp-6); }
+  /* Pad the shell out of the side notches (landscape) and the home-indicator
+     bar (bottom) with the safe-area insets the viewport-fit=cover meta exposes.
+     On a desktop the insets resolve to 0, so this is a no-op there. The top
+     inset is handled on the sticky .topbar so its background still fills behind
+     the status bar. */
+  .app{
+    max-width: 620px; margin: 0 auto;
+    padding: 0 env(safe-area-inset-right) calc(var(--sp-6) + env(safe-area-inset-bottom)) env(safe-area-inset-left);
+  }
 
   /* staggered boot-in for the stacked sections */
   main > .section, main > .lede{ animation: bootIn .32s both ease-out; }
@@ -389,7 +397,9 @@
   .topbar{
     position: sticky; top: 0; z-index: 10;
     display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
-    padding: var(--sp-4) var(--sp-4) var(--sp-3);
+    /* Extra top padding = the notch/status-bar inset, so the header sits below
+       it while its blurred background paints all the way up to the screen edge. */
+    padding: calc(var(--sp-4) + env(safe-area-inset-top)) var(--sp-4) var(--sp-3);
     background: color-mix(in srgb, var(--bg) 86%, transparent);
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
@@ -1132,6 +1142,9 @@
   .viewnav a:hover{ color: var(--ink); background: color-mix(in srgb, var(--accent) 6%, transparent); }
   .viewnav a[aria-current="page"]{ color: var(--ink); background: var(--bg-raised); border-color: var(--line-strong); }
   .viewnav a:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* Decorative tab emoji — kept at a steady size and baseline so the mix of
+     glyphs (🪵 ⚖️ 📖 ⚙️) lines up with the label rather than jostling it. */
+  .nav-emoji{ font-size: 14px; line-height: 1; filter: saturate(.9); }
 
   /* "merged" is a settled state — a theme-woven violet (pink×blue), distinct
      from a notch's green "done". */
@@ -1238,7 +1251,7 @@
     .stats-body{ flex-direction: column; align-items: flex-start; gap: 6px; }
     .stats-body .stat + .stat::before{ content: none; margin-right: 0; }
     .viewnav{ margin-left: var(--sp-3); margin-right: var(--sp-3); }
-    .topbar{ padding: var(--sp-3) var(--sp-3) var(--sp-3); gap: var(--sp-2); }
+    .topbar{ padding: calc(var(--sp-3) + env(safe-area-inset-top)) var(--sp-3) var(--sp-3); gap: var(--sp-2); }
     .brand{ font-size: 20px; }
     /* Give the tap targets a comfortable minimum on touch. */
     .btn{ min-height: 40px; }
