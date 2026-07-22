@@ -23,7 +23,10 @@ templ AppPage(demo bool) {
 	<html lang="en" data-mode={ pageMode(demo) }>
 		<head>
 			<meta charset="utf-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			// viewport-fit=cover lets the page paint into the notch / status-bar and
+			// home-indicator areas; app.css then pads the chrome back out of them with
+			// env(safe-area-inset-*), so no letterbox margin wastes screen on a phone.
+			<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 			<meta name="color-scheme" content="light"/>
 			<meta name="theme-color" content="#ece0c8"/>
 			<title>tally</title>
