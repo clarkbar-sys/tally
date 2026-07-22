@@ -1880,7 +1880,25 @@
           </div>
           <div id="notch-list" class="stack"></div>
         </div>
-      </section>`;
+      </section>
+
+      <!-- Mobile New-notch affordance: a floating action button in thumb reach.
+           It's its own self-contained .menu, so it reuses the same
+           data-menu-trigger / toggleMenu / onDocClick machinery as every other
+           popover — opening upward as a small sheet. Hidden on desktop by CSS,
+           where the header's inline "New notch" button takes over. -->
+      <div class="menu fab-menu" data-menu="fab-new">
+        <button class="fab-new" type="button" data-menu-trigger aria-haspopup="true" aria-expanded="false" aria-label="New notch">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <div class="menu-pop">
+          <div class="menu-title">New notch</div>
+          <form class="stack" id="fab-notch-form" autocomplete="off" style="gap:8px">
+            <input class="input" id="fab-notch-title" type="text" placeholder="Title…"/>
+            <button class="btn primary sm" type="submit">Add</button>
+          </form>
+        </div>
+      </div>`;
     renderCards(DEFAULT_QUERY);
   }
 
@@ -3022,6 +3040,22 @@
     if (f.id === 'new-notch-form') {
       e.preventDefault();
       const box = document.getElementById('new-notch-title');
+      const title = box.value.trim();
+      if (!title) return;
+      createNotch(title, null).then(() => {
+        box.value = '';
+        const menu = f.closest('.menu');
+        if (menu) closeMenuEl(menu);
+        const search = document.getElementById('search');
+        renderCards(search ? search.value : DEFAULT_QUERY);
+      }).catch(() => {});
+      return;
+    }
+    // The mobile FAB's composer — same create-and-refresh flow as the header
+    // New-notch form above, just its own element/ids so the two never collide.
+    if (f.id === 'fab-notch-form') {
+      e.preventDefault();
+      const box = document.getElementById('fab-notch-title');
       const title = box.value.trim();
       if (!title) return;
       createNotch(title, null).then(() => {
