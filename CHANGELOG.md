@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.10.0...tally-v0.11.0) (2026-07-22)
+
+
+### Features
+
+* **web:** cleaner mobile layout for the notches list (bottom nav + FAB) ([#129](https://github.com/clarkbar-sys/tally/issues/129)) ([219634f](https://github.com/clarkbar-sys/tally/commit/219634fe4fef7363eda645728bdf09e7fe07c665))
+* **web:** edge-to-edge safe areas + emoji on the top nav tabs ([#126](https://github.com/clarkbar-sys/tally/issues/126)) ([44da942](https://github.com/clarkbar-sys/tally/commit/44da94292bda3a70d50a61927a8ef95799979fa3))
+
 ## [0.10.0](https://github.com/clarkbar-sys/tally/compare/tally-v0.9.0...tally-v0.10.0) (2026-07-21)
 
 
